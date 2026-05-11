@@ -1,0 +1,33 @@
+# 敏感配置
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 虚拟环境
+venv/
+env/
+.venv/
+env.local/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日志和缓存
+*.log
+.cache/
+*.egg-info/
+
+# 操作系统
+.DS_Store
+Thumbs.db
