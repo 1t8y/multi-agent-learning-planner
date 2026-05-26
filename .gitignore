@@ -49,3 +49,7 @@ build/
 # Python依赖
 dist/
 build/
+
+# 临时文件
+*.tmp
+智能体agent/
