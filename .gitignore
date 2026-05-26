@@ -3,6 +3,11 @@
 .env.local
 .env.*.local
 
+# Trae配置（包含API密钥）
+.trae/config/
+.trae/agents/
+.trae/documents/
+
 # Python
 __pycache__/
 *.pyc
@@ -35,3 +40,12 @@ Thumbs.db
 # 文档（可选）
 *.docx
 *.pdf
+
+# 前端依赖
+node_modules/
+dist/
+build/
+
+# Python依赖
+dist/
+build/

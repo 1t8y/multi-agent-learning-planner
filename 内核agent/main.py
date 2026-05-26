@@ -4,7 +4,8 @@ from typing import List, Dict, Optional
 from dotenv import load_dotenv
 import requests
 
-load_dotenv()
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(project_root, ".env"))
 
 class DeepSeekAgent:
     def __init__(self, api_key: Optional[str] = None):
