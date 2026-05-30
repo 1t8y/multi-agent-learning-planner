@@ -1,510 +1,303 @@
-# 多智能体学习规划助手
+# 🤖 多智能体学习规划助手
 
-## 项目介绍
+[![Vercel](https://img.shields.io/badge/Vercel-Deployed-black?logo=vercel)](https://ai-beige-eta.vercel.app)
+[![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.2-ff6b35)](https://langchain-ai.github.io/langgraph/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-0.4-4169E1)](https://www.trychroma.com/)
 
-这是一个基于多智能体架构的智能学习规划系统，通过多个专业化Agent协同工作，为用户提供个性化的学习路径规划、资源推荐和效果评估服务。
+> 基于 **LangGraph** 状态图编排 + **Self-RAG** 智能检索的多智能体学习规划系统。
+> 从用户自然语言输入到完整的学习规划、资源推荐、评估反馈，全流程自动化。
+> 已部署上线：**[ai-beige-eta.vercel.app](https://ai-beige-eta.vercel.app)**
 
-### 核心特性
+---
 
-- 🤖 **多智能体协作**：4个专业化子Agent + 1个协调器
-- 📊 **动态规划**：根据用户时间期望生成不同深度的学习路径
-- 🔗 **状态同步**：与Hermes Kanban实时同步任务状态
-- 📝 **结构化输出**：JSON格式的结构化数据，易于程序处理
-- 💻 **友好交互**：命令行交互界面，即装即用
-- 🎨 **Web界面**：提供React前端界面
-
-## 功能列表
-
-### 1. 需求分析
-- 从用户自然语言输入中提取结构化学习需求
-- 支持提取：学习目标、现有基础、每日可用时间、学习偏好、时间期望
-- 智能验证和清理提取结果
-
-### 2. 学习规划
-- 基于需求生成个性化学习计划
-- 根据时间期望动态调整阶段数量和内容深度
-- 提供分阶段的学习路径和里程碑
-
-### 3. 资源推荐
-- 根据学习计划和阶段推荐匹配的学习资源
-- 支持多种资源类型：视频教程、文字教程、实战项目、文档资料
-- 提供资源难度和推荐理由
-
-### 4. 评估反馈
-- 对学习计划进行全面评估
-- 提供多维度评分：可行性、内容、时间、方法
-- 生成阶段性评估指标和调整建议
-
-### 5. Hermes集成
-- 自动同步任务状态到Hermes Kanban
-- 支持claim + complete工作流程
-- 实时跟踪各Agent执行状态
-
-## 技术栈
-
-### 后端技术
-
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Python | 3.8+ | 核心开发语言 |
-| DeepSeek API | v1 | AI模型服务 |
-| python-dotenv | 1.0.0+ | 环境变量管理 |
-| requests | 2.31.0+ | HTTP请求库 |
-
-### 前端技术
-
-| 技术 | 说明 |
-|------|------|
-| React | 前端框架 |
-| TypeScript | 类型系统 |
-| TailwindCSS | 样式框架 |
-| Zustand | 状态管理 |
-| Vite | 构建工具 |
-
-### 外部集成
-
-| 服务 | 说明 |
-|------|------|
-| Hermes | 任务看板系统 |
-| Trae IDE | 开发环境 |
-
-## 系统架构
+## 🏗️ 系统架构
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    用户输入                             │
-│  "我是零基础，想学Python，每天2小时，视频学习，一周入门"  │
-└──────────────────────┬────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│                    协调器 (Coordinator)                  │
-│  • 调度各Agent执行顺序                                    │
-│  • 处理Agent间数据传递                                    │
-│  • 集成Hermes状态同步                                    │
-│  • 收集性能指标                                          │
-└──────────────────────┬────────────────────────────────┘
-                       │
-          ┌────────────┼────────────┐
-          │            │            │
-          ▼            ▼            ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│   需求分析Agent   │ │   课程规划Agent  │ │   资源推荐Agent   │
-│  Extractor      │ │  Planner        │ │  Recommender    │
-│  - 提取学习目标  │ │  - 生成学习计划  │ │  - 推荐学习资源  │
-│  - 验证输入     │ │  - 划分学习阶段  │ │  - 匹配难度    │
-│  - 清理数据     │ │  - 设置里程碑    │ │  - 提供理由    │
-└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
-         │                    │                    │
-         └────────────────────┼────────────────────┘
-                             ▼
-                  ┌─────────────────┐
-                  │  评估反馈Agent    │
-                  │  Assessor       │
-                  │  - 评估计划合理性 │
-                  │  - 提供调整建议   │
-                  │  - 生成评估指标   │
-                  └────────┬────────┘
-                           │
-                           ▼
-                  ┌─────────────────┐
-                  │   学习规划结果    │
-                  │  - 需求分析      │
-                  │  - 学习计划      │
-                  │  - 推荐资源      │
-                  │  - 评估反馈      │
-                  └─────────────────┘
+用户输入（自然语言）
+    │
+    ▼
+┌─────────────────────────────────────────────────┐
+│            LangGraph 状态图编排                   │
+│                                                  │
+│   extract → plan → recommend ∥ assess → merge   │
+│                      ↑_______________|           │
+│                   (评估<6分 → 自动再生)            │
+└─────────────────────────────────────────────────┘
+    │              │              │
+    ▼              ▼              ▼
+┌────────┐  ┌──────────┐  ┌──────────────┐
+│需求分析 │  │ 课程规划  │  │ 资源推荐 ∥ 评估│
+│Agent   │  │ Agent    │  │ Agent  Agent  │
+│LLM+关键词│  │ LLM生成  │  │ Self-RAG+LLM │
+└────────┘  └──────────┘  └──────────────┘
+                              │
+                    ┌─────────┴─────────┐
+                    ▼                   ▼
+              ┌──────────┐      ┌────────────┐
+              │ChromaDB  │      │ Tavily 网络 │
+              │本地知识库 │      │ 搜索 (可选) │
+              └──────────┘      └────────────┘
 ```
 
-## 快速开始
+## ✨ 核心特性
+
+### 🧠 多智能体协作
+- **4 个专业化 Agent**：需求分析、课程规划、资源推荐、评估反馈
+- **LangGraph StateGraph 编排**：声明式状态图，支持并行执行和条件再生
+- **自动再生机制**：评估分数低于阈值时自动返回重新生成（最多 3 轮）
+
+### 🔍 Self-RAG 智能检索
+- **三级资源获取策略**：本地 ChromaDB 知识库 → Tavily 网络搜索 → LLM 智能生成
+- **查询自动改写**：检索结果不足时自动改写查询重试（最多 2 次）
+- **来源清晰标注**：每个资源标注 `knowledge_base` / `web_search` / `llm_generated`
+
+### 📊 6 维度评估体系
+- 目标可行性 · 内容合理性 · 时间安排 · 方法适配性 · 进阶逻辑 · 个性化匹配
+- 评分低于阈值自动触发计划再生
+
+### 🎨 现代 Web 界面
+- React 18 + TypeScript + TailwindCSS
+- Zustand 状态管理
+- 实时加载动画和结果展示
+
+### ☁️ 一键部署
+- **Vercel Serverless** 架构，前端静态 + Python API 函数
+- 本地开发支持完整 ChromaDB 向量检索
+
+---
+
+## 🚀 在线演示
+
+**访问地址**：https://ai-beige-eta.vercel.app
+
+输入示例：
+- `我是零基础，想学习Python编程，每天能学2小时，希望一个月内能上手`
+- `我想快速入门前端开发，目标是可以自己开发小项目`
+- `我想在三个月内学习法考的全部内容`
+
+---
+
+## 📦 本地运行
 
 ### 环境要求
+- Python 3.12+
+- Node.js 18+
+- DeepSeek API Key
 
-- Python 3.8+ 或 Node.js 18+（前端）
-- DeepSeek API密钥
-- Hermes CLI（可选，用于任务同步）
-
-### 安装步骤
-
-#### 1. 克隆项目
-
+### 1. 克隆项目
 ```bash
-cd c:\ai学习
-git clone <repository_url>
-cd learning-planning-multi-agent
+git clone https://github.com/1t8y/multi-agent-learning-planner.git
+cd multi-agent-learning-planner
 ```
 
-#### 2. 安装Python依赖
-
+### 2. 安装依赖
 ```bash
-# 后端依赖
+# 后端
 cd learning-planning-multi-agent
 pip install -r requirements.txt
 
-# 前端依赖（可选）
+# 前端
 cd ..
 npm install
 ```
 
-#### 3. 配置环境变量
-
-在后端目录创建 `.env` 文件：
-
-```bash
-# DeepSeek API配置
-DEEPSEEK_API_KEY=your_api_key_here
-
-# Hermes配置（可选）
-HERMES_API_KEY=your_hermes_key_here
-API_BASE_URL=https://api.deepseek.com/v1/chat/completions
+### 3. 配置 API Key
+在 `learning-planning-multi-agent/` 下创建 `.env`：
+```env
+DEEPSEEK_API_KEY=sk-your-key-here
+TAVILY_API_KEY=tvly-your-key-here   # 可选，用于网络搜索
 ```
 
-#### 4. 配置Hermes同步（可选）
+### 4. 启动
+```bash
+# 终端 A：启动后端
+cd learning-planning-multi-agent
+python api_server.py                 # http://localhost:8000
 
-编辑 `.trae/config/hermes_sync.json`：
+# 终端 B：启动前端
+npm run dev                          # http://localhost:5173
+```
 
+或者直接命令行测试：
+```bash
+python graph_orchestrator.py
+```
+
+---
+
+## 🧩 项目结构
+
+```
+├── api/
+│   └── plan.py                      # Vercel Serverless 函数
+├── src/                             # React 前端
+│   ├── components/
+│   │   ├── InputSection.tsx         # 输入组件
+│   │   ├── ResultSection.tsx        # 结果展示
+│   │   ├── RequirementResult.tsx    # 需求分析卡片
+│   │   ├── PlanResult.tsx           # 学习计划卡片
+│   │   ├── ResourcesResult.tsx      # 资源推荐卡片
+│   │   └── AssessmentResult.tsx     # 评估反馈卡片
+│   ├── store/planStore.ts           # Zustand 状态管理
+│   ├── utils/api.ts                 # API 调用封装
+│   └── types/                       # TypeScript 类型
+├── learning-planning-multi-agent/   # Python 后端
+│   ├── graph_orchestrator.py        # LangGraph 编排器（核心）
+│   ├── requirement_extractor.py     # 需求分析 Agent
+│   ├── course_planner.py            # 课程规划 Agent
+│   ├── resource_recommender.py      # 资源推荐 Agent
+│   ├── assessment_feedback.py       # 评估反馈 Agent（6维度）
+│   ├── self_rag_recommender.py      # Self-RAG 检索工作流
+│   ├── vector_store.py              # ChromaDB 向量数据库管理
+│   ├── web_search.py                # Tavily 网络搜索
+│   ├── feedback_manager.py          # 用户反馈管理
+│   ├── base_agent.py                # Agent 基类
+│   ├── config.py                    # 配置管理
+│   ├── api_server.py                # FastAPI 服务
+│   └── agent_coordinator.py         # 传统线程版协调器（备用）
+├── vercel.json                      # Vercel 部署配置
+├── requirements.txt                 # Python 依赖
+├── vite.config.ts
+└── package.json
+```
+
+---
+
+## 🔧 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| **Agent 编排** | LangGraph StateGraph（状态图 + 条件边 + 并行分支） |
+| **AI 模型** | DeepSeek API（chat 模型，支持工具调用和 JSON 输出） |
+| **向量数据库** | ChromaDB（本地持久化，相似度检索 + 领域过滤） |
+| **网络搜索** | Tavily Search API（可选，补充知识库不覆盖的资源） |
+| **后端框架** | FastAPI + Uvicorn（完整 REST API + Swagger 文档） |
+| **前端框架** | React 18 + TypeScript + Vite |
+| **样式** | TailwindCSS |
+| **状态管理** | Zustand |
+| **部署** | Vercel（前端静态 + Python Serverless） |
+
+---
+
+## 📊 Agent 工作流
+
+### LangGraph 状态图
+
+```python
+graph = StateGraph(LearningState)
+
+graph.add_node("extract", requirement_extractor)
+graph.add_node("plan", course_planner)
+graph.add_node("recommend", resource_recommender)   # 与 assess 并行
+graph.add_node("assess", assessment_feedback)        # 与 recommend 并行
+graph.add_node("merge", result_merger)
+
+graph.add_edge("extract", "plan")
+graph.add_edge("plan", "recommend")   # 并行分支
+graph.add_edge("plan", "assess")      # 并行分支
+graph.add_edge("recommend", "merge")
+graph.add_edge("assess", "merge")
+graph.add_conditional_edges("merge", should_regenerate, {
+    "regenerate": "plan",   # 分数 < 6 → 重新生成
+    "done": END
+})
+
+app = graph.compile()
+result = app.invoke({"user_input": "..."})
+```
+
+### Self-RAG 检索流程
+
+```
+用户查询 → 构建检索Query → ChromaDB检索
+                              │
+                    相似度 ≥ 0.5? ──是──→ 直接推荐 ✅
+                              │
+                             否
+                              │
+                    改写Query重试(最多2次)
+                              │
+                    仍不足? ──是──→ Tavily网络搜索 🌐
+                              │
+                    仍不足? ──是──→ LLM智能生成 🤖
+```
+
+---
+
+## 📝 API 接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/plan` | 生成学习规划（核心接口） |
+| `POST` | `/api/feedback` | 提交资源反馈 |
+| `POST` | `/api/resources/submit` | 提交新资源 |
+| `GET` | `/api/stats` | 系统统计信息 |
+| `GET` | `/api/resources/pending` | 待审核资源列表 |
+
+### 请求示例
+```json
+POST /api/plan
+{ "userInput": "我是零基础，想学Python，每天2小时，一个月内上手" }
+```
+
+### 响应结构
 ```json
 {
-  "cli_path": "hermes",
-  "api_base_url": "http://127.0.0.1:8642",
-  "sync_mode": "trae_to_hermes",
-  "agent_task_mappings": {}
+  "requirement_data": {
+    "learning_objective": "学习Python编程",
+    "current_foundation": "零基础",
+    "daily_available_time": "2小时",
+    "time_expectation": "短期学习"
+  },
+  "plan": {
+    "learning_path": { "stages": [...] }
+  },
+  "resources": {
+    "resources": [...],
+    "rag_info": {
+      "source_info": "知识库2个 + 网络3个",
+      "kb_relevance": 0.75
+    }
+  },
+  "assessment": {
+    "assessment_summary": {
+      "score_average": 7.5,
+      "feasibility_rating": 8,
+      "content_rating": 7,
+      ...
+    }
+  }
 }
 ```
 
-#### 5. 运行系统
-
-**命令行版本**：
-```bash
-cd learning-planning-multi-agent
-python agent_coordinator.py
-```
-
-**Web界面版本**：
-```bash
-cd c:\ai学习
-npm run dev
-```
-
-### 使用示例
-
-#### 命令行版本
-
-```bash
-# 启动系统
-python agent_coordinator.py
-
-# 输入学习需求
-您: 我是零基础，想学习Python编程，每天能学2小时，喜欢看视频学习，希望一周内快速入门
-
-# 查看结果
-# 系统会输出完整的：
-# - 需求分析结果
-# - 学习计划（分阶段）
-# - 推荐资源
-# - 评估反馈
-
-# 退出系统
-您: exit
-```
-
-#### Web界面版本
-
-1. 打开浏览器访问 `http://localhost:5173`
-2. 在输入框中输入学习需求
-3. 点击"生成学习规划"按钮
-4. 查看生成的规划结果
-
-## 项目结构
-
-```
-learning-planning-multi-agent/          # 后端目录
-├── agent_coordinator.py          # 多智能体协调器
-│   └── 负责调度各Agent、并行处理、状态同步
-│
-├── requirement_extractor.py     # 需求分析Agent
-│   └── 从用户输入中提取结构化需求
-│
-├── course_planner.py            # 课程规划Agent
-│   └── 基于需求生成学习计划
-│
-├── resource_recommender.py      # 资源推荐Agent
-│   └── 为学习阶段推荐匹配资源
-│
-├── assessment_feedback.py        # 评估反馈Agent
-│   └── 评估计划并提供建议
-│
-├── base_agent.py                # 基础Agent类
-│   └── 提供通用功能和接口
-│
-├── config.py                   # 配置管理
-│   └── 统一配置加载和管理
-│
-├── hermes_sync.py              # Hermes同步
-│   └── 与Kanban状态同步
-│
-├── requirements.txt              # Python依赖
-│
-└── README.md                   # 项目文档
-
-c:\ai学习/                       # 前端目录
-├── src/
-│   ├── components/            # React组件
-│   │   ├── ResultCard.tsx     # 结果卡片组件
-│   │   ├── ResultSection.tsx  # 结果展示区
-│   │   ├── RequirementResult.tsx
-│   │   ├── PlanResult.tsx
-│   │   ├── ResourcesResult.tsx
-│   │   ├── AssessmentResult.tsx
-│   │   ├── InputSection.tsx
-│   │   ├── Header.tsx
-│   │   └── LoadingSpinner.tsx
-│   ├── store/
-│   │   └── planStore.ts       # 状态管理
-│   ├── types/
-│   │   └── index.ts          # 类型定义
-│   ├── utils/
-│   │   └── api.ts            # API工具
-│   ├── App.tsx
-│   └── main.tsx
-├── package.json
-└── vite.config.ts
-
-.trae/                          # Trae配置目录
-├── agents/                     # Agent提示词配置
-│   ├── requirement-extractor-agent.md
-│   ├── course-planner-agent.md
-│   ├── resource-recommender-agent.md
-│   ├── assessment-feedback-agent.md
-│   └── agent_coordinator.md
-│
-└── config/
-    └── hermes_sync.json       # Hermes同步配置
-```
-
-## 配置说明
-
-### Agent配置文件
-
-各Agent的提示词配置位于 `.trae/agents/` 目录：
-
-- `requirement-extractor-agent.md` - 需求分析提示词
-- `course-planner-agent.md` - 课程规划提示词
-- `resource-recommender-agent.md` - 资源推荐提示词
-- `assessment-feedback-agent.md` - 评估反馈提示词
-- `agent_coordinator.md` - 协调器提示词
-
-### Hermes任务映射
-
-在每个Agent配置文件中添加：
-
-```yaml
 ---
-agent_name: requirement-extractor
-hermes_task_id: "t_d7888e7c"
----
-```
 
-### Hermes Kanban 看板
+## 🔄 更新日志
 
-**看板名称**：`multi-agent-learning-assistant`（多智能体学习规划助手开发）
-
-**配置的任务**：
-
-| 任务ID | 任务名称 | 说明 |
-|--------|---------|------|
-| `t_d7888e7c` | 需求分析子Agent | 提取用户学习需求 |
-| `t_61df9356` | 课程规划子Agent | 生成学习计划 |
-| `t_924a1cdc` | 资源推荐子Agent | 推荐学习资源 |
-| `t_643f6130` | 评估反馈子Agent | 评估计划并建议 |
-| `t_20d4bcff` | 主协调Agent | 协调各Agent |
-
-### Hermes命令参考
-
-```bash
-# 查看所有看板
-hermes kanban boards
-
-# 切换到项目看板
-hermes kanban boards switch multi-agent-learning-assistant
-
-# 查看任务列表
-hermes kanban list
-
-# 查看任务详情
-hermes kanban show <task_id>
-
-# 查看任务运行历史
-hermes kanban runs <task_id>
-
-# 查看任务日志
-hermes kanban log <task_id>
-
-# 查看统计信息
-hermes kanban stats
-```
-
-## API接口
-
-### Python API
-
-```python
-from agent_coordinator import LearningPlanningCoordinator
-
-# 初始化协调器
-coordinator = LearningPlanningCoordinator(enable_hermes_sync=True)
-
-# 处理用户请求
-result = coordinator.process("你的学习需求")
-
-# result包含：
-# - requirement_data: 需求分析结果
-# - plan: 学习计划
-# - resources: 推荐资源
-# - assessment: 评估反馈
-
-# 获取性能指标
-metrics = coordinator.get_agent_metrics()
-```
-
-## 性能指标
-
-系统提供详细的性能监控：
-
-```python
-metrics = coordinator.get_agent_metrics()
-# 输出：
-# {
-#   'extractor': {
-#     'call_count': 5,
-#     'error_count': 0,
-#     'success_rate': 1.0,
-#     'last_execution_time': 1.23
-#   },
-#   'planner': {...},
-#   'recommender': {...},
-#   'assessor': {...}
-# }
-```
-
-## 常见问题
-
-### 1. API调用失败
-
-**问题**：DeepSeek API调用失败
-**解决**：
-- 检查 `DEEPSEEK_API_KEY` 是否正确配置
-- 确认网络能够访问API服务
-- 查看是否达到API调用限制
-
-### 2. Hermes同步失败
-
-**问题**：Hermes任务状态未更新
-**解决**：
-- 确认Hermes CLI已安装并可用
-- 检查 `hermes_task_id` 配置是否正确
-- 验证任务ID在Kanban中存在
-
-### 3. 导入错误
-
-**问题**：ModuleNotFoundError
-**解决**：
-```bash
-pip install -r requirements.txt
-```
-
-### 4. 前端构建失败
-
-**问题**：npm build失败
-**解决**：
-```bash
-# 清理缓存
-rm -rf node_modules/.vite
-
-# 重新安装
-npm install
-npm run build
-```
-
-## 部署说明
-
-### 本地部署
-
-```bash
-# 克隆项目
-git clone <repo>
-cd learning-planning-multi-agent
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 配置环境
-cp .env.example .env
-# 编辑.env填入API密钥
-
-# 运行
-python agent_coordinator.py
-```
-
-### Web界面部署
-
-```bash
-# 安装前端依赖
-cd c:\ai学习
-npm install
-
-# 开发模式
-npm run dev
-
-# 生产构建
-npm run build
-
-# 预览生产版本
-npm run preview
-```
-
-### 生产环境
-
-1. 使用虚拟环境隔离Python依赖
-2. 配置反向代理（如Nginx）
-3. 设置环境变量而非 `.env` 文件
-4. 配置日志记录
-5. 设置进程管理（如systemd、pm2）
-
-### Docker部署（可选）
-
-```dockerfile
-FROM python:3.9-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-CMD ["python", "agent_coordinator.py"]
-```
-
-## 更新日志
+### v2.0.0 (2026-05-30)
+- 🆕 **LangGraph 编排**：替换线程式协调器，支持声明式状态图、并行执行、条件再生
+- 🆕 **Self-RAG 智能检索**：ChromaDB → 查询改写 → Tavily → LLM 三级策略
+- 🆕 **6 维度评估**：新增进阶逻辑、个性化匹配评估维度
+- 🆕 **Vercel 部署**：Serverless 架构，前端 + Python API 在线可访问
+- 🆕 **前端 API 动态 URL**：开发/生产环境自适应
+- 🔧 修复需求提取：LLM 主提取 + 通用正则备份
+- 🔧 修复资源推荐：过滤不相关 KB 结果，智能回退 LLM 生成
+- 🔧 修复再生死循环：迭代计数器放入节点函数
 
 ### v1.0.0 (2026-05-26)
-- 实现基础多智能体架构
-- 支持需求分析、课程规划、资源推荐、评估反馈
-- 集成Hermes Kanban状态同步
-- 支持时间期望动态规划
-- 添加React Web界面
-- 统一配置管理系统
+- 基础多智能体架构（4 Agent + 协调器）
+- React Web 界面 + FastAPI 后端
+- ChromaDB 向量数据库集成
+- 用户反馈闭环（好评 ≥ 2 自动入库）
 
-## 贡献指南
+---
 
-欢迎提交Issue和Pull Request！
-
-## 许可证
+## 📄 许可证
 
 MIT License
 
-## 联系方式
-
-- 项目主页：[GitHub Repository]
-- 问题反馈：[Issues Page]
-
 ---
 
-**使用多智能体学习规划助手，让学习更高效！** 📚✨
+**Built with ❤️ for learning. Deployed on [Vercel](https://ai-beige-eta.vercel.app).**

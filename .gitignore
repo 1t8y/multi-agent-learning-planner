@@ -55,6 +55,8 @@ build/
 智能体agent/
 
 # 向量数据库和反馈数据（本地运行时生成）
+chroma_db/
+data/
 learning-planning-multi-agent/chroma_db/
 learning-planning-multi-agent/data/
 
