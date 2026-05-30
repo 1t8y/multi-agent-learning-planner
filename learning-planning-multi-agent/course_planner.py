@@ -104,7 +104,11 @@ class CoursePlannerAgent(BaseAgent):
 
 ## 强制约束
 1. 仅输出**纯标准JSON**，无多余文字、解释、注释
-2. 无有效输入时，所有字段返回「信息不足，无法规划」
+2. 即使缺少部分信息（如无现有基础、无每日时间），也必须基于已有信息生成合理计划，不能返回"信息不足"
+   - 无现有基础 → 默认按"零基础"规划
+   - 无每日时间 → 默认分配合理时间（如每天1-2小时）
+   - 无学习偏好 → 综合推荐多种学习方式
+   - 无时间期望 → 默认按"标准学习"规划
 3. 严格遵循固定输出结构，不增删、不修改字段名
 4. 学习计划贴合用户实际情况和时间期望，具备可执行性
 5. 根据time_expectation动态调整学习内容深度和阶段数量
@@ -167,12 +171,15 @@ class CoursePlannerAgent(BaseAgent):
         try:
             # 将需求数据转换为JSON字符串作为输入
             input_json = json.dumps(requirement_data, ensure_ascii=False)
-            
+
             # 调用API生成学习计划
             result = self._call_api(input_json)
-            
+
+            # 后处理：替换LLM未遵守约束时残留的"信息不足"
+            self._sanitize_result(result, requirement_data)
+
             print(f"[{self.AGENT_NAME}] 学习计划生成完成")
-            
+
             return result
         
         except ValueError as e:
@@ -188,6 +195,55 @@ class CoursePlannerAgent(BaseAgent):
             print(f"[{self.AGENT_NAME}] 规划过程发生未知错误: {e}")
             return self._get_default_result()
     
+    def _sanitize_result(self, result: Dict, requirement: Dict):
+        """
+        清理LLM输出中残留的"信息不足"等内容
+
+        LLM有时即使prompt要求不能返回"信息不足"，仍会在某些字段中写入。
+        此方法检测并替换这些残留。
+        """
+        learning_obj = requirement.get("learning_objective", "目标内容")
+
+        # 修复 goal_feasibility
+        if result.get("goal_feasibility", "").startswith("信息不足"):
+            result["goal_feasibility"] = f"基于「{learning_obj}」的学习计划，目标明确且可行"
+
+        # 修复 estimated_duration
+        if result.get("estimated_duration", "").startswith("信息不足"):
+            time_expectation = requirement.get("time_expectation", "标准学习")
+            duration_map = {
+                "快速入门": "约1周",
+                "短期学习": "约2-4周",
+                "标准学习": "约1-3个月",
+                "长期学习": "约3-6个月",
+            }
+            result["estimated_duration"] = duration_map.get(time_expectation, "约1-3个月")
+
+        # 修复空的 stages
+        stages = result.get("learning_path", {}).get("stages", [])
+        if not stages or len(stages) == 0:
+            result["learning_path"]["stages"] = [
+                {
+                    "stage_name": f"第一阶段：{learning_obj}基础入门",
+                    "study_content": f"学习{learning_obj}的核心概念和基础知识",
+                    "time_allocation": "约占总时长的40%",
+                    "milestone": f"掌握{learning_obj}基础，能独立完成简单练习",
+                },
+                {
+                    "stage_name": f"第二阶段：{learning_obj}进阶实践",
+                    "study_content": f"深入学习{learning_obj}，通过项目实践巩固技能",
+                    "time_allocation": "约占总时长的40%",
+                    "milestone": f"能运用{learning_obj}解决实际问题",
+                },
+                {
+                    "stage_name": "第三阶段：综合实战",
+                    "study_content": f"综合运用{learning_obj}完成完整项目",
+                    "time_allocation": "约占总时长的20%",
+                    "milestone": f"具备独立完成{learning_obj}相关项目的能力",
+                },
+            ]
+            result["learning_path"]["stage_count"] = len(result["learning_path"]["stages"])
+
     def process(self, requirement_data: Dict) -> Dict:
         """
         处理学习需求（实现BaseAgent的抽象方法）

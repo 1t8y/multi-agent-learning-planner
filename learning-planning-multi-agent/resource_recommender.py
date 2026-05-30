@@ -107,78 +107,112 @@ class ResourceRecommenderAgent(BaseAgent):
     def recommend(self, requirement_info: Dict, learning_plan: Dict) -> Dict:
         """
         执行资源推荐（增强版）
-        
-        流程：
-        1. 优先使用Self-RAG智能检索
-        2. 知识库没有则调用网络搜索
-        3. 最后使用LLM生成推荐
+
+        优先级：
+        1. 本地知识库检索 (ChromaDB) — 最可靠，相似度≥阈值直接使用
+        2. 网络搜索 (Tavily) — 知识库不足时补充，明确标注来源
+        3. LLM生成 — 以上均不足时兜底，标注为"AI生成参考"
         """
         if not isinstance(requirement_info, dict) or not isinstance(learning_plan, dict):
             raise ValueError("输入必须是字典类型")
-        
+
         learning_objective = requirement_info.get("learning_objective", "")
         current_foundation = requirement_info.get("current_foundation", "零基础")
-        
+
         if not learning_objective:
             print(f"[{self.AGENT_NAME}] 警告：缺少学习目标，返回空资源列表")
             return self._get_default_result()
-        
+
         print(f"[{self.AGENT_NAME}] 开始推荐学习资源: {learning_objective}")
-        
+
         if self._rag_initialized and self.rag_recommender:
             return self._recommend_with_rag(learning_objective, current_foundation, learning_plan)
         else:
-            print(f"[{self.AGENT_NAME}] Self-RAG未启用，使用传统LLM推荐")
+            print(f"[{self.AGENT_NAME}] Self-RAG未启用，使用传统LLM推荐（标注来源）")
             return self._recommend_with_llm(requirement_info, learning_plan)
-    
-    def _recommend_with_rag(self, 
-                            learning_objective: str, 
+
+    def _recommend_with_rag(self,
+                            learning_objective: str,
                             current_foundation: str,
                             learning_plan: Dict) -> Dict:
-        """使用Self-RAG智能推荐"""
+        """使用Self-RAG智能推荐，如果结果不足则回退LLM生成"""
         print(f"[{self.AGENT_NAME}] 启用Self-RAG智能检索")
-        
+
         rag_result = self.rag_recommender.recommend(
             learning_objective=learning_objective,
             current_foundation=current_foundation,
             learning_plan=learning_plan
         )
-        
+
         rag_resources = rag_result.get("resources", [])
-        
-        if rag_resources:
-            print(f"[{self.AGENT_NAME}] RAG推荐 {len(rag_resources)} 个资源")
-            return {
-                "resources": rag_resources,
-                "rag_info": {
-                    "source_info": rag_result.get("source_info", ""),
-                    "kb_relevance": rag_result.get("kb_relevance", 0),
-                    "rewrite_count": rag_result.get("rewrite_count", 0),
-                    "used_web_search": rag_result.get("used_web_search", False)
-                }
-            }
-        else:
-            print(f"[{self.AGENT_NAME}] RAG无结果，使用LLM补充推荐")
-            return self._recommend_with_llm(
+        kb_relevance = rag_result.get("kb_relevance", 0)
+
+        # 统计各来源数量
+        kb_count = sum(1 for r in rag_resources if r.get("source") == "knowledge_base")
+        web_count = sum(1 for r in rag_resources if r.get("source") == "web_search")
+
+        # 如果RAG结果不足（无资源或相关性太低），回退LLM
+        if not rag_resources:
+            print(f"[{self.AGENT_NAME}] RAG无相关结果 (KB相似度: {kb_relevance:.2f})，使用LLM生成")
+            llm_result = self._recommend_with_llm(
                 {"learning_objective": learning_objective, "current_foundation": current_foundation},
                 learning_plan
             )
+            # 保留RAG来源信息
+            llm_result["rag_info"] = {
+                "source_info": f"本地知识库无相关资源 → AI生成, 知识库相似度: {kb_relevance:.2f}",
+                "kb_relevance": kb_relevance,
+                "rewrite_count": rag_result.get("rewrite_count", 0),
+                "used_web_search": rag_result.get("used_web_search", False),
+                "kb_count": 0,
+                "web_count": 0,
+                "llm_count": len(llm_result.get("resources", [])),
+            }
+            return llm_result
+
+        print(f"[{self.AGENT_NAME}] RAG推荐 {len(rag_resources)} 个资源 (知识库: {kb_count}, 网络: {web_count})")
+
+        return {
+            "resources": rag_resources,
+            "rag_info": {
+                "source_info": rag_result.get("source_info", ""),
+                "kb_relevance": kb_relevance,
+                "rewrite_count": rag_result.get("rewrite_count", 0),
+                "used_web_search": rag_result.get("used_web_search", False),
+                "kb_count": kb_count,
+                "web_count": web_count,
+            }
+        }
     
     def _recommend_with_llm(self, requirement_info: Dict, learning_plan: Dict) -> Dict:
-        """使用传统LLM推荐"""
+        """使用传统LLM推荐（明确标注来源）"""
         try:
             input_data = {
                 "requirement_info": requirement_info,
                 "learning_plan": learning_plan
             }
             input_json = json.dumps(input_data, ensure_ascii=False)
-            
+
             result = self._call_api(input_json)
-            
-            print(f"[{self.AGENT_NAME}] LLM推荐完成，共推荐 {len(result.get('resources', []))} 个资源")
-            
+
+            # 为 LLM 生成的每个资源标注来源
+            resources = result.get("resources", [])
+            for r in resources:
+                if not r.get("source"):
+                    r["source"] = "llm_generated"
+
+            print(f"[{self.AGENT_NAME}] LLM推荐完成，共推荐 {len(resources)} 个资源 (来源: AI生成)")
+
+            result["resources"] = resources
+            result["rag_info"] = {
+                "source_info": "基于AI模型直接生成，未经本地知识库验证",
+                "used_web_search": False,
+                "kb_count": 0,
+                "web_count": 0,
+                "llm_count": len(resources),
+            }
             return result
-        
+
         except Exception as e:
             print(f"[{self.AGENT_NAME}] LLM推荐失败: {e}")
             return self._get_default_result()

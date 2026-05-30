@@ -66,7 +66,8 @@ class SelfRAGRecommender:
     实现自主判断检索策略的Agentic RAG系统
     """
     
-    SIMILARITY_THRESHOLD = 0.5
+    SIMILARITY_THRESHOLD = 0.5      # 结果充分阈值
+    MIN_KB_SIMILARITY = 0.15       # 最低可用阈值，低于此值的KB结果直接丢弃
     MAX_REWRITE_TIMES = 2
     MAX_KB_RESULTS = 5
     MAX_WEB_RESULTS = 3
@@ -234,10 +235,17 @@ class SelfRAGRecommender:
         return state
     
     def _merge_and_select(self, state: RAGState) -> RAGState:
-        """合并和选择最佳资源"""
+        """合并和选择最佳资源，过滤低相关度结果"""
         all_resources = []
-        
+        kb_kept = 0
+        kb_discarded = 0
+
         for kb in state.kb_results:
+            sim = kb.get("similarity", 0)
+            if sim < self.MIN_KB_SIMILARITY:
+                kb_discarded += 1
+                continue  # 丢弃不相关的结果
+            kb_kept += 1
             resource = {
                 "phase": "第一阶段：基础入门",
                 "type": kb.get("resource_type", "文档资料"),
@@ -245,12 +253,15 @@ class SelfRAGRecommender:
                 "description": kb.get("description", ""),
                 "duration": "2-4小时",
                 "difficulty": self._map_level(kb.get("level", "intermediate")),
-                "recommendation_reason": f"来自本地知识库，相似度 {kb.get('similarity', 0):.2f}",
+                "recommendation_reason": f"来自本地知识库，相似度 {sim:.2f}",
                 "url": kb.get("url", ""),
                 "source": "knowledge_base"
             }
             all_resources.append(resource)
-        
+
+        if kb_discarded > 0:
+            print(f"[SelfRAG] 已丢弃 {kb_discarded} 个不相关KB结果 (相似度 < {self.MIN_KB_SIMILARITY})")
+
         for web in state.web_results:
             resource = {
                 "phase": "第一阶段：基础入门",
@@ -264,7 +275,7 @@ class SelfRAGRecommender:
                 "source": "web_search"
             }
             all_resources.append(resource)
-        
+
         seen_titles = set()
         unique_resources = []
         for r in all_resources:
@@ -273,17 +284,20 @@ class SelfRAGRecommender:
                 unique_resources.append(r)
                 if len(unique_resources) >= 6:
                     break
-        
+
         state.final_resources = unique_resources
-        
+
+        # 精确的来源信息
         sources = []
-        if state.kb_results:
-            sources.append(f"知识库{len(state.kb_results)}个")
+        if kb_kept > 0:
+            sources.append(f"知识库{kb_kept}个")
         if state.web_results:
             sources.append(f"网络{len(state.web_results)}个")
-        state.source_info = " + ".join(sources) if sources else "无结果"
-        
-        print(f"[SelfRAG] 最终推荐 {len(unique_resources)} 个资源 (来源: {state.source_info})")
+        if not sources:
+            sources.append("本地无相关资源")
+        state.source_info = " + ".join(sources)
+
+        print(f"[SelfRAG] 最终推荐 {len(unique_resources)} 个资源 (来源: {state.source_info}, 丢弃{kb_discarded}个)")
         return state
     
     def _map_level(self, level: str) -> str:

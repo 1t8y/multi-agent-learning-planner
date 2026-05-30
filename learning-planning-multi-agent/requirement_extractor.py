@@ -136,99 +136,63 @@ class RequirementExtractorAgent(BaseAgent):
     
     def _extract_by_keywords(self, user_input: str) -> Dict:
         """
-        基于关键词的硬编码提取（作为模型提取的备份方案）
-        
+        基于关键词的硬编码提取（作为LLM提取失败时的备份方案）
+
+        改进点：
+        - 使用更通用的模式提取学习目标，不再限定特定主题
+        - 清理逻辑更智能，从整句中剥离修饰词保留核心目标
+
         Args:
             user_input: 用户输入
-            
+
         Returns:
             提取结果
         """
-        input_lower = user_input.lower()
-        
-        # 提取学习目标：识别"学习/想学习/要学"后面的内容
-        learning_objective = None
-        patterns = [
-            r"想学(?:.*?)(?:Python|Java|C\+\+|C#|JavaScript|前端|后端|法考|会计|英语|数学|编程|算法|机器学习|深度学习|数据分析|产品经理|UI设计|设计|画画|摄影|音乐)",
-            r"学习(?:.*?)(?:Python|Java|C\+\+|C#|JavaScript|前端|后端|法考|会计|英语|数学|编程|算法|机器学习|深度学习|数据分析|产品经理|UI设计|设计|画画|摄影|音乐)",
-            r"要学(?:.*?)(?:Python|Java|C\+\+|C#|JavaScript|前端|后端|法考|会计|英语|数学|编程|算法|机器学习|深度学习|数据分析|产品经理|UI设计|设计|画画|摄影|音乐)",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, user_input)
-            if match:
-                learning_objective = match.group(0)
-                break
-        
-        # 如果没有找到特定模式，尝试简单提取
-        if not learning_objective:
-            # 移除明确的时间、偏好等信息，保留核心学习目标
-            cleaned = user_input
-            keywords_to_remove = ["每天", "每周", "小时", "视频", "文字", "实操", "零基础", "初级", "中级", 
-                                 "快速", "短期", "长期", "三个月", "一个月", "一周", "半年", "一年",
-                                 "最好有", "喜欢", "希望", "想在", "我是", "我想", "我要"]
-            for keyword in keywords_to_remove:
-                cleaned = cleaned.replace(keyword, "")
-            cleaned = re.sub(r"\s+", " ", cleaned).strip()
-            learning_objective = cleaned if cleaned else user_input
-        
-        # 限制长度
-        if learning_objective and len(learning_objective) > 100:
-            learning_objective = learning_objective[:100] + "..."
-        
-        # 提取现有基础
+        # ── 提取学习目标（通用模式） ──
+        learning_objective = self._extract_learning_objective(user_input)
+
+        # ── 提取现有基础 ──
         current_foundation = None
-        if "零基础" in user_input or "0基础" in user_input or "没基础" in user_input or "完全不会" in user_input:
+        if any(kw in user_input for kw in ["零基础", "0基础", "没基础", "完全不会", "小白", "新手"]):
             current_foundation = "零基础"
-        elif "初级" in user_input or "入门" in user_input or "有点基础" in user_input:
+        elif any(kw in user_input for kw in ["初级", "入门", "有点基础", "学过一点", "了解一些"]):
             current_foundation = "初级"
-        elif "中级" in user_input or "进阶" in user_input or "有一定基础" in user_input:
+        elif any(kw in user_input for kw in ["中级", "进阶", "有一定基础", "有经验", "工作"]):
             current_foundation = "中级"
-        
-        # 提取每日可用时间
+
+        # ── 提取每日可用时间 ──
         daily_available_time = None
         time_patterns = [
-            r"(\d+)\s*小时",
+            r"每天\s*(\d+)\s*小时", r"每日\s*(\d+)\s*小时",
+            r"(\d+)\s*小时.*每天", r"(\d+)\s*小时.*每日",
             r"(\d+)\s*个小时",
-            r"每天\s*(\d+)\s*h",
-            r"每天\s*(\d+)\s*小时",
-            r"每日\s*(\d+)\s*小时",
-            r"(\d+)\s*h/d",
-            r"(\d+)\s*h每天"
+            r"每天\s*(\d+)\s*h", r"(\d+)\s*h/d",
+            r"每天\s*(\d+)\s*分钟", r"(\d+)\s*分钟.*每天",
+            r"(\d+)\s*小时",
         ]
         for pattern in time_patterns:
             match = re.search(pattern, user_input)
             if match:
-                daily_available_time = f"{match.group(1)}小时"
+                val = match.group(1)
+                if "分钟" in pattern:
+                    hours = int(val) / 60
+                    daily_available_time = f"{hours:.1f}小时" if hours >= 1 else f"{val}分钟"
+                else:
+                    daily_available_time = f"{val}小时"
                 break
-        
-        # 提取学习偏好
+
+        # ── 提取学习偏好 ──
         learning_preference = None
-        if "视频" in user_input or "看课" in user_input or "听课" in user_input or "视频课" in user_input:
+        if any(kw in user_input for kw in ["视频", "看课", "听课", "视频课", "录像", "网课"]):
             learning_preference = "视频"
-        elif "文字" in user_input or "读书" in user_input or "看书" in user_input or "文档" in user_input:
+        elif any(kw in user_input for kw in ["文字", "读书", "看书", "文档", "博客", "文章", "阅读"]):
             learning_preference = "文字"
-        elif "实操" in user_input or "练习" in user_input or "实践" in user_input or "动手" in user_input:
+        elif any(kw in user_input for kw in ["实操", "练习", "实践", "动手", "项目", "敲代码", "写代码"]):
             learning_preference = "实操"
-        
-        # 提取时间期望
-        time_expectation = None
-        
-        # 快速入门（1周内）
-        if any(keyword in user_input for keyword in ["1周内", "一周内", "几天内", "快速", "速成", "7天", "一周搞定", "几天搞定"]):
-            time_expectation = "快速入门"
-        
-        # 短期学习（1-4周）
-        elif any(keyword in user_input for keyword in ["2周", "3周", "几周", "1个月内", "一个月内", "1月", "短期", "一个月"]):
-            time_expectation = "短期学习"
-        
-        # 标准学习（1-3个月）
-        elif any(keyword in user_input for keyword in ["2个月", "3个月", "2-3个月", "两三个月", "三个月", "几个月", "数月", "两个月"]):
-            time_expectation = "标准学习"
-        
-        # 长期学习（3个月以上）
-        elif any(keyword in user_input for keyword in ["4个月", "5个月", "半年", "6个月", "长期", "系统", "精通", "一年", "半年以上"]):
-            time_expectation = "长期学习"
-        
+
+        # ── 提取时间期望 ──
+        time_expectation = self._extract_time_expectation(user_input)
+
         return {
             "learning_objective": learning_objective,
             "current_foundation": current_foundation,
@@ -236,7 +200,78 @@ class RequirementExtractorAgent(BaseAgent):
             "learning_preference": learning_preference,
             "time_expectation": time_expectation
         }
-    
+
+    def _extract_learning_objective(self, user_input: str) -> Optional[str]:
+        """
+        用通用方法从用户输入中提取学习目标
+
+        策略：
+        1. 匹配「学/想学/要学...」+ 常见领域词 → 截取整段目标
+        2. 匹配「准备/打算/希望/备考...」模式
+        3. 回退：移除修饰词后的核心文本
+        """
+        # 策略1：匹配「动词 + 修饰 + 目标内容」模式
+        verb_patterns = [
+            # 匹配"想学/学习/要学/想学习/想要学习 ... 某领域" 贪婪到句子核心
+            r"(?:想学[习]?|要学[习]?|学[习]?|准备学[习]?|打算学[习]?|希望学[习]?)\s*(.{2,60}?)(?:的[^，。]*)?(?:，|。|$|最好|希望|每天|喜欢|我是|我想|我要)",
+            r"(?:备考|考)(.{2,40}?)(?:，|。|$|最好|希望|每天)",
+            r"(?:准备|打算|计划|希望|想要)\s*(.{2,60}?)(?:，|。|$|最好|希望|每天)",
+        ]
+        for pattern in verb_patterns:
+            match = re.search(pattern, user_input)
+            if match:
+                obj = match.group(1).strip()
+                # 去掉开头的"的"
+                obj = re.sub(r"^的\s*", "", obj)
+                if len(obj) >= 2 and not obj.startswith("的"):
+                    return obj
+
+        # 策略2：直接用"学习"或"学"定位，截取到句末
+        match = re.search(r"(?:学[习]?)\s*(.{3,80}?)$", user_input)
+        if match:
+            obj = match.group(1).strip()
+            # 清理尾部修饰
+            obj = re.sub(r"[\s，,]*最好.*$", "", obj)
+            obj = re.sub(r"[\s，,]*希望.*$", "", obj)
+            obj = re.sub(r"[\s，,]*每天.*$", "", obj)
+            if len(obj) >= 2:
+                return obj
+
+        # 策略3：回退 - 移除明确修饰词后的剩余文本作为学习目标
+        modifiers = [
+            "每天", "每周", "小时", "分钟", "视频", "文字", "实操",
+            "零基础", "初级", "中级", "希望", "想在", "我是", "我想", "我要",
+            "最好有", "喜欢", "快速", "短期", "长期", "三个月", "一个月",
+            "一周", "半年", "一年", "几天", "几周", "几个月",
+        ]
+        cleaned = user_input
+        for m in modifiers:
+            cleaned = cleaned.replace(m, "")
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = re.sub(r"^[的，,。.]|[的，,。.]$", "", cleaned)
+
+        return cleaned if len(cleaned) >= 2 else None
+
+    def _extract_time_expectation(self, user_input: str) -> Optional[str]:
+        """提取时间期望"""
+        # 快速入门（1周内）
+        if any(kw in user_input for kw in ["1周内", "一周内", "几天内", "快速", "速成", "7天", "一周搞定", "几天搞定", "1周", "一星期"]):
+            return "快速入门"
+
+        # 短期学习（1-4周）
+        if any(kw in user_input for kw in ["2周", "3周", "4周", "几周", "1个月内", "一个月内", "1月", "短期", "一个月", "一个半月", "1个月", "几星期"]):
+            return "短期学习"
+
+        # 标准学习（1-3个月）
+        if any(kw in user_input for kw in ["2个月", "3个月", "2-3个月", "两三个月", "三个月", "几个月", "数月", "两个月", "两月", "三两个月"]):
+            return "标准学习"
+
+        # 长期学习（3个月以上）
+        if any(kw in user_input for kw in ["4个月", "5个月", "半年", "6个月", "长期", "系统", "精通", "一年", "半年以上", "几年"]):
+            return "长期学习"
+
+        return None
+
     def _validate_and_clean(self, data: Dict) -> Dict:
         """
         验证和清理提取结果
@@ -311,29 +346,45 @@ class RequirementExtractorAgent(BaseAgent):
         print(f"[{self.AGENT_NAME}] 开始提取学习需求...")
         
         try:
-            # 先用关键词提取（更可靠）
-            keyword_result = self._extract_by_keywords(input_text)
-            
-            # 尝试API提取
+            # ── LLM 为主提取，关键词填补空缺 ──
+            # 步骤1：尝试 LLM 提取（通用性强，能处理任意输入）
+            api_result = None
             try:
                 raw_result = self._call_api(input_text)
                 api_result = self._validate_and_clean(raw_result)
-                
-                # 合并结果：如果API有结果但关键词没有，用API的；如果关键词有结果，优先用关键词的
-                final_result = {}
-                for key in ["learning_objective", "current_foundation", "daily_available_time", "learning_preference", "time_expectation"]:
-                    # 优先用关键词提取的结果（更可靠）
-                    if keyword_result.get(key) is not None:
-                        final_result[key] = keyword_result[key]
-                    else:
-                        final_result[key] = api_result.get(key)
-                
-                print(f"[{self.AGENT_NAME}] 关键词提取: {json.dumps(keyword_result, ensure_ascii=False)}")
-                print(f"[{self.AGENT_NAME}] API提取: {json.dumps(api_result, ensure_ascii=False)}")
-                
+                print(f"[{self.AGENT_NAME}] LLM提取: {json.dumps(api_result, ensure_ascii=False)}")
             except Exception as api_error:
-                print(f"[{self.AGENT_NAME}] API提取失败，使用关键词提取: {api_error}")
-                final_result = keyword_result
+                print(f"[{self.AGENT_NAME}] LLM提取失败: {api_error}")
+
+            # 步骤2：关键词提取作备份
+            keyword_result = self._extract_by_keywords(input_text)
+            print(f"[{self.AGENT_NAME}] 关键词提取: {json.dumps(keyword_result, ensure_ascii=False)}")
+
+            # 步骤3：合并 —— 智能选择，对 learning_objective 优先用更完整的一方
+            final_result = {}
+            for key in ["learning_objective", "current_foundation", "daily_available_time", "learning_preference", "time_expectation"]:
+                llm_val = api_result.get(key) if api_result else None
+                kw_val = keyword_result.get(key)
+
+                if key == "learning_objective":
+                    # 智能选择：取更长/更具体的那个
+                    # 关键词提取保留了更多上下文（如"前端开发"、"Java开发"），LLM有时会截断
+                    llm_len = len(llm_val) if llm_val else 0
+                    kw_len = len(kw_val) if kw_val else 0
+                    if kw_val and llm_val:
+                        # 如果关键词结果包含了LLM结果，用更完整的关键词
+                        if llm_val in kw_val and kw_len >= llm_len:
+                            final_result[key] = kw_val
+                        elif kw_val in llm_val and llm_len >= kw_len:
+                            final_result[key] = llm_val
+                        else:
+                            # 都不包含对方，取更长的那个（更具体）
+                            final_result[key] = kw_val if kw_len >= llm_len else llm_val
+                    else:
+                        final_result[key] = llm_val or kw_val
+                else:
+                    # 其他字段：LLM 优先，关键词填补空缺
+                    final_result[key] = llm_val if llm_val is not None else kw_val
             
             print(f"[{self.AGENT_NAME}] 最终提取: {json.dumps(final_result, ensure_ascii=False)}")
             

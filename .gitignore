@@ -53,3 +53,16 @@ build/
 # 临时文件
 *.tmp
 智能体agent/
+
+# 向量数据库和反馈数据（本地运行时生成）
+learning-planning-multi-agent/chroma_db/
+learning-planning-multi-agent/data/
+
+# Vercel
+.vercel
+api/__pycache__/
+
+# 个人文件
+.claude/
+resume_optimized.tex
+学习计划/

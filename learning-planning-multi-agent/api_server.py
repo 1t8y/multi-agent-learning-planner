@@ -56,43 +56,51 @@ if FASTAPI_AVAILABLE:
 
 rag_recommender = None
 feedback_manager = None
-coordinator = None
+orchestrator = None
 
 
 def init_services():
     """初始化服务"""
-    global rag_recommender, feedback_manager, coordinator
-    
+    global rag_recommender, feedback_manager
+
     try:
         from self_rag_recommender import init_self_rag
         from feedback_manager import init_feedback_manager
-        
+
         rag_recommender = init_self_rag()
-        
+
         if rag_recommender and rag_recommender.vector_store:
             feedback_manager = init_feedback_manager(
                 vector_store=rag_recommender.vector_store
             )
-        
+
         print("[api_server] 服务初始化完成")
     except Exception as e:
         print(f"[api_server] 服务初始化失败: {e}")
 
-def init_coordinator():
-    """初始化协调器"""
-    global coordinator, rag_recommender, feedback_manager
-    
+
+def init_orchestrator():
+    """初始化LangGraph编排器"""
+    global orchestrator, rag_recommender, feedback_manager
+
     try:
-        from agent_coordinator import LearningPlanningCoordinator
-        
-        coordinator = LearningPlanningCoordinator(enable_hermes_sync=False)
-        
+        from graph_orchestrator import GraphOrchestrator
+
+        orchestrator = GraphOrchestrator()
+        orchestrator.compile()
+
+        # 将 RAG 和反馈管理器注入推荐Agent
         if rag_recommender:
-            coordinator.recommender.rag_recommender = rag_recommender
-        
-        print("[api_server] 协调器初始化完成")
+            orchestrator.recommender.rag_recommender = rag_recommender
+            orchestrator.recommender.feedback_manager = feedback_manager
+            orchestrator.recommender._rag_initialized = True
+
+        orchestrator.print_status()
+        print("[api_server] LangGraph编排器初始化完成")
     except Exception as e:
-        print(f"[api_server] 协调器初始化失败: {e}")
+        print(f"[api_server] 编排器初始化失败: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if FASTAPI_AVAILABLE:
@@ -100,22 +108,24 @@ if FASTAPI_AVAILABLE:
     async def startup_event():
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
         init_services()
-        init_coordinator()
-    
+        init_orchestrator()
+
     @app.post("/api/plan")
     async def generate_plan(request: PlanRequest):
-        """生成学习规划"""
-        if not coordinator:
-            raise HTTPException(status_code=500, detail="协调器未初始化")
-        
+        """生成学习规划（LangGraph编排）"""
+        if not orchestrator:
+            raise HTTPException(status_code=500, detail="编排器未初始化")
+
         print(f"[API] 收到请求: {request.userInput}")
-        
+
         try:
-            result = coordinator.process(request.userInput)
-            print(f"[API] 返回结果: {json.dumps(result, ensure_ascii=False)[:500]}...")
+            result = orchestrator.invoke(request.userInput)
+            print(f"[API] 返回结果: 学习目标={result.get('requirement_data', {}).get('learning_objective', 'N/A')}")
             return result
         except Exception as e:
             print(f"[API] 错误: {e}")
+            import traceback
+            traceback.print_exc()
             raise HTTPException(status_code=500, detail=str(e))
     
     

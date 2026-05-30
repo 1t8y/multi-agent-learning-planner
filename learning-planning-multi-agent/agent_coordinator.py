@@ -1,12 +1,13 @@
 """
-学习规划多智能体协调器
-负责调度和协调所有子Agent，完成完整的学习规划流程
+学习规划多智能体协调器（传统线程版）
+⚠️ 已被 graph_orchestrator.py (LangGraph版) 取代，本文件保留用于：
+  - 作为无LangGraph环境的后备方案
+  - 提供独立的 CLI 测试入口 (python agent_coordinator.py)
 
 核心功能：
 - 协调四个子Agent的执行顺序
 - 处理Agent间的数据传递
 - 支持并行处理提高效率
-- 集成Hermes Kanban状态同步
 - 收集和管理各Agent的性能指标
 """
 
@@ -22,94 +23,36 @@ from course_planner import CoursePlannerAgent
 from resource_recommender import ResourceRecommenderAgent
 from assessment_feedback import AssessmentFeedbackAgent
 
-# 导入Hermes同步客户端
-try:
-    from hermes_sync import HermesSyncClient
-    HERMES_AVAILABLE = True
-except ImportError:
-    HERMES_AVAILABLE = False
-    print("[协调器] Hermes Sync 模块未导入，跳过状态同步")
-
 
 class LearningPlanningCoordinator:
     """
-    学习规划多智能体系统的主协调器
-    
+    学习规划多智能体系统的主协调器（线程版）
+
     工作流程：
     1. 接收用户输入
     2. 调用需求分析子Agent提取结构化需求
     3. 调用课程规划子Agent生成学习计划
     4. 并行调用资源推荐和评估反馈子Agent
     5. 整合所有结果返回给用户
-    6. 同步各Agent状态到Hermes Kanban
-    
+
     Attributes:
         extractor: 需求分析Agent
         planner: 课程规划Agent
         recommender: 资源推荐Agent
         assessor: 评估反馈Agent
-        hermes_sync: Hermes同步客户端（可选）
-        agent_name_mapping: Agent名称到配置名称的映射
     """
-    
-    def __init__(self, enable_hermes_sync: bool = True):
-        """
-        初始化协调器
-        
-        Args:
-            enable_hermes_sync: 是否启用Hermes状态同步
-        """
+
+    def __init__(self):
+        """初始化协调器"""
         print("[协调器] 初始化多智能体学习规划系统...")
-        
+
         # 初始化子Agent
         self.extractor = RequirementExtractorAgent()
         self.planner = CoursePlannerAgent()
         self.recommender = ResourceRecommenderAgent()
         self.assessor = AssessmentFeedbackAgent()
-        
-        # 初始化Hermes同步（如果可用）
-        self.hermes_sync = None
-        if HERMES_AVAILABLE and enable_hermes_sync:
-            try:
-                self.hermes_sync = HermesSyncClient()
-                print("[协调器] Hermes Sync 已启用")
-            except Exception as e:
-                print(f"[协调器] Hermes Sync 初始化失败: {e}")
-        
-        # Agent名称映射（用于Hermes任务ID查找）
-        self.agent_name_mapping = {
-            'extractor': 'requirement-extractor-agent',
-            'planner': 'course-planner-agent',
-            'recommender': 'resource-recommender-agent',
-            'assessor': 'assessment-feedback-agent',
-            'coordinator': 'agent_coordinator'
-        }
-        
+
         print("[协调器] 多智能体学习规划系统初始化完成")
-    
-    def _notify_agent_complete(self, agent_key: str, status: str = 'completed') -> None:
-        """
-        通知Agent执行完成，同步状态到Hermes Kanban
-        
-        Args:
-            agent_key: Agent的内部键名
-            status: 状态（running/completed/failed）
-        """
-        if not self.hermes_sync:
-            return
-        
-        agent_name = self.agent_name_mapping.get(agent_key)
-        if not agent_name:
-            print(f"[协调器] 未知的Agent: {agent_key}")
-            return
-        
-        task_id = self.hermes_sync.get_agent_task_id(agent_name)
-        if not task_id:
-            print(f"[协调器] 未找到Agent {agent_name} 的Hermes任务ID")
-            return
-        
-        print(f"[协调器] 同步Agent {agent_name} 状态到Hermes: {status}")
-        self.hermes_sync.update_job_status(task_id, status)
     
     def _parallel_process(self, requirement_data: Dict, plan_data: Dict) -> Tuple[Dict, Dict]:
         """
@@ -172,10 +115,10 @@ class LearningPlanningCoordinator:
             key, value, status = results.get()
             if key == 'resource':
                 resource_result = value
-                self._notify_agent_complete('recommender', status)
+                # status logged
             elif key == 'assessment':
                 assessment_result = value
-                self._notify_agent_complete('assessor', status)
+                # Hermes removed: self._notify_agent_complete('assessor', status)
         
         # 返回结果，提供默认值以防线程执行失败
         return (
@@ -203,17 +146,17 @@ class LearningPlanningCoordinator:
         print("="*70)
         
         # 标记协调器开始运行
-        self._notify_agent_complete('coordinator', 'running')
+        # Hermes removed: self._notify_agent_complete('coordinator', 'running')
         
         # 步骤1：需求分析
         print("\n【步骤1】调用需求分析子Agent...")
         try:
             requirement_data = self.extractor.extract(user_input)
             print(f"[提取结果] {json.dumps(requirement_data, ensure_ascii=False)}")
-            self._notify_agent_complete('extractor', 'completed')
+            # Hermes removed: self._notify_agent_complete('extractor', 'completed')
         except Exception as e:
             print(f"[提取失败] {str(e)}")
-            self._notify_agent_complete('extractor', 'failed')
+            # Hermes removed: self._notify_agent_complete('extractor', 'failed')
             return {
                 "error": "无法提取有效学习目标",
                 "requirement_data": {},
@@ -237,10 +180,10 @@ class LearningPlanningCoordinator:
         try:
             plan_data = self.planner.plan(requirement_data)
             print(f"[规划结果] {json.dumps(plan_data, ensure_ascii=False)}")
-            self._notify_agent_complete('planner', 'completed')
+            # Hermes removed: self._notify_agent_complete('planner', 'completed')
         except Exception as e:
             print(f"[规划失败] {str(e)}")
-            self._notify_agent_complete('planner', 'failed')
+            # Hermes removed: self._notify_agent_complete('planner', 'failed')
             return {
                 "error": "课程规划失败",
                 "requirement_data": requirement_data,
@@ -258,7 +201,7 @@ class LearningPlanningCoordinator:
         
         # 步骤4：整合结果
         print("\n【步骤4】整合所有子Agent结果...")
-        self._notify_agent_complete('coordinator', 'completed')
+        # Hermes removed: self._notify_agent_complete('coordinator', 'completed')
         
         return {
             "requirement_data": requirement_data,
