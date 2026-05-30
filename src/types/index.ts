@@ -25,6 +25,7 @@ export interface PlanData {
 }
 
 export interface Resource {
+  id?: string;
   phase: string;
   type: string;
   title: string;
@@ -33,10 +34,22 @@ export interface Resource {
   difficulty: string;
   recommendation_reason: string;
   url: string;
+  source?: 'knowledge_base' | 'web_search' | 'LLM生成';
 }
 
 export interface ResourcesData {
   resources: Resource[];
+}
+
+export interface RagInfo {
+  source_info: string;
+  kb_relevance: number;
+  rewrite_count: number;
+  used_web_search: boolean;
+}
+
+export interface ResourcesDataWithRag extends ResourcesData {
+  rag_info?: RagInfo;
 }
 
 export interface Metric {
@@ -76,8 +89,27 @@ export interface AssessmentData {
 export interface PlanResponse {
   requirement_data: RequirementData;
   plan: PlanData;
-  resources: ResourcesData;
+  resources: ResourcesDataWithRag;
   assessment: AssessmentData;
+}
+
+export interface FeedbackSubmission {
+  resource_id: string;
+  resource_title: string;
+  resource_url: string;
+  feedback_type: 'useful' | 'not_useful' | 'add_new';
+  rating: number;
+  comment: string;
+  learning_objective: string;
+}
+
+export interface ResourceSubmission {
+  title: string;
+  description: string;
+  url: string;
+  resource_type: string;
+  field: string;
+  tags: string[];
 }
 
 export interface PlanStore {

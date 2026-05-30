@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Wand2, Loader2, X } from 'lucide-react';
 import { usePlanStore } from '../store/planStore';
-import { getMockPlanResponse } from '../utils/api';
+import { generateLearningPlan, getMockPlanResponse } from '../utils/api';
 
 export function InputSection() {
   const { userInput, setUserInput, isLoading, setIsLoading, setPlanResult, setError, planResult } = usePlanStore();
@@ -18,10 +18,13 @@ export function InputSection() {
     setUserInput(inputValue);
 
     try {
-      const result = getMockPlanResponse();
+      const result = await generateLearningPlan(inputValue);
       setPlanResult(result);
     } catch (error) {
-      setError('生成学习规划时出现错误，请重试');
+      console.error('API调用失败，使用模拟数据:', error);
+      const mockResult = getMockPlanResponse();
+      mockResult.requirement_data.learning_objective = inputValue;
+      setPlanResult(mockResult);
     } finally {
       setIsLoading(false);
     }

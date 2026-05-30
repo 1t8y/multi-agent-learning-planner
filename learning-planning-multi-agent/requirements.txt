@@ -6,3 +6,21 @@
 
 python-dotenv>=1.0.0
 requests>=2.31.0
+
+# 向量数据库
+chromadb>=0.4.0
+
+# LangChain生态
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langgraph>=0.2.0
+
+# 嵌入模型
+sentence-transformers>=2.2.0
+
+# Tavily搜索引擎
+tavily-python>=0.3.0
+
+# HTTP客户端（异步）
+aiohttp>=3.9.0

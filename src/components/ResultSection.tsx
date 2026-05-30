@@ -5,6 +5,7 @@ import { RequirementResult } from './RequirementResult';
 import { PlanResult } from './PlanResult';
 import { ResourcesResult } from './ResourcesResult';
 import { AssessmentResult } from './AssessmentResult';
+import type { FeedbackSubmission } from '../types';
 
 export function ResultSection() {
   const { planResult } = usePlanStore();
@@ -12,6 +13,18 @@ export function ResultSection() {
   if (!planResult) {
     return null;
   }
+
+  const learningObjective = planResult.requirement_data?.learning_objective || '';
+
+  const handleFeedbackSubmit = (feedback: FeedbackSubmission) => {
+    console.log('提交反馈:', feedback);
+    alert(`感谢您的反馈！\n资源: ${feedback.resource_title}\n反馈类型: ${feedback.feedback_type}`);
+  };
+
+  const handleAddResource = () => {
+    console.log('添加新资源');
+    alert('资源提交功能正在开发中，敬请期待！');
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -42,7 +55,12 @@ export function ResultSection() {
           icon={<BookOpen className="w-5 h-5 text-white" />}
           color="bg-gradient-to-r from-purple-500 to-pink-600"
         >
-          <ResourcesResult data={planResult.resources} />
+          <ResourcesResult 
+            data={planResult.resources} 
+            learningObjective={learningObjective}
+            onFeedbackSubmit={handleFeedbackSubmit}
+            onAddResource={handleAddResource}
+          />
         </ResultCard>
 
         <ResultCard

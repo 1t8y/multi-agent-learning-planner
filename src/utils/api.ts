@@ -1,6 +1,6 @@
 import type { PlanResponse } from '../types';
 
-const API_BASE_URL = 'http://localhost:3001';
+const API_BASE_URL = 'http://localhost:8000';
 
 export async function generateLearningPlan(userInput: string): Promise<PlanResponse> {
   const response = await fetch(`${API_BASE_URL}/api/plan`, {
