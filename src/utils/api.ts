@@ -1,6 +1,8 @@
 import type { PlanResponse } from '../types';
 
-const API_BASE_URL = 'http://localhost:8000';
+// 生产环境(Vercel): API 与前端同域，使用相对路径
+// 开发环境: 连接本地后端
+const API_BASE_URL = import.meta.env.MODE === 'production' ? '' : 'http://localhost:8000';
 
 export async function generateLearningPlan(userInput: string): Promise<PlanResponse> {
   const response = await fetch(`${API_BASE_URL}/api/plan`, {

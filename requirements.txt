@@ -1,0 +1,5 @@
+# Vercel Python Serverless Function 依赖
+# 仅包含 api/plan.py 运行所需的最小依赖
+# ChromaDB/sentence-transformers/langgraph 等不需要（会自动回退）
+requests>=2.31.0
+python-dotenv>=1.0.0
