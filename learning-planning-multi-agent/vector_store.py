@@ -125,6 +125,7 @@ class VectorStoreManager:
         self.bm25 = None
         self._bm25_docs = []
         self._bm25_ids = []
+        self._bm25_metas = []
         self._bm25_stale = True
 
         if not CHROMA_AVAILABLE:
@@ -383,7 +384,8 @@ class VectorStoreManager:
             tokenized = [_tokenize_for_bm25(doc) for doc in all_data["documents"]]
             self.bm25 = BM25Okapi(tokenized)
             self._bm25_docs = all_data["documents"]
-            self._bm25_ids = all_data["ids"][0] if all_data["ids"] else []
+            self._bm25_ids = all_data["ids"] if all_data["ids"] else []
+            self._bm25_metas = all_data["metadatas"] if all_data["metadatas"] else []
             self._bm25_stale = False
             tokenizer_info = "jieba中文分词" if JIEBA_AVAILABLE else "字符级分词"
             print(f"[vector_store] BM25索引已重建（{len(self._bm25_ids)}个文档, {tokenizer_info}）")
@@ -402,8 +404,10 @@ class VectorStoreManager:
         for idx, score in ranked[:top_k]:
             doc_id = self._bm25_ids[idx] if idx < len(self._bm25_ids) else ""
             doc_text = self._bm25_docs[idx] if idx < len(self._bm25_docs) else ""
+            meta = self._bm25_metas[idx] if idx < len(self._bm25_metas) else {}
             results.append({
                 "id": doc_id,
+                "title": meta.get("title", "") if meta else "",
                 "similarity": float(score),
                 "bm25_score": float(score),
                 "description": doc_text,
