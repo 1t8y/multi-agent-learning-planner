@@ -1,7 +1,34 @@
-# 敏感配置
+# 敏感配置（禁止提交）
 .env
 .env.local
+.env.*
 .env.*.local
+!.env.example
+
+# 证书和密钥
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa*
+id_dsa*
+known_hosts
+authorized_keys
+
+# 凭据文件
+credentials.json
+secrets.json
+token.json
+*_token.*
+api_key.txt
+keys.json
+
+# 本地配置
+local_settings.py
+local_config.py
+*.local.py
 
 # Trae配置（包含API密钥）
 .trae/config/
@@ -50,9 +77,19 @@ build/
 dist/
 build/
 
+# 旧版本Agent目录（不上传）
+智能体agent/
+内核agent/
+需求分析agent/
+
+# 临时文档（不上传）
+改进文档/
+改进建议.md
+知识汇总/
+学习计划/
+
 # 临时文件
 *.tmp
-智能体agent/
 
 # 向量数据库和反馈数据（本地运行时生成）
 chroma_db/

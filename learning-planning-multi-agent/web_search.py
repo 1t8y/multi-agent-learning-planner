@@ -15,6 +15,15 @@ from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
+try:
+    from dotenv import load_dotenv
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
+
+if DOTENV_AVAILABLE:
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
 
 try:
     from tavily import TavilyClient

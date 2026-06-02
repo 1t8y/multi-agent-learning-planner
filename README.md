@@ -18,27 +18,30 @@
 用户输入（自然语言）
     │
     ▼
-┌─────────────────────────────────────────────────┐
-│            LangGraph 状态图编排                   │
-│                                                  │
-│   extract → plan → recommend ∥ assess → merge   │
-│                      ↑_______________|           │
-│                   (评估<6分 → 自动再生)            │
-└─────────────────────────────────────────────────┘
-    │              │              │
-    ▼              ▼              ▼
-┌────────┐  ┌──────────┐  ┌──────────────┐
-│需求分析 │  │ 课程规划  │  │ 资源推荐 ∥ 评估│
-│Agent   │  │ Agent    │  │ Agent  Agent  │
-│LLM+关键词│  │ LLM生成  │  │ Self-RAG+LLM │
-└────────┘  └──────────┘  └──────────────┘
-                              │
-                    ┌─────────┴─────────┐
-                    ▼                   ▼
-              ┌──────────┐      ┌────────────┐
-              │ChromaDB  │      │ Tavily 网络 │
-              │本地知识库 │      │ 搜索 (可选) │
-              └──────────┘      └────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                LangGraph 状态图编排                         │
+│                                                          │
+│   extract → plan → recommend ∥ assess → merge           │
+│                              ↑_______________|           │
+│                           (评估<6分 → 自动再生，最多3轮)     │
+└──────────────────────────────────────────────────────────┘
+    │                │                    │
+    ▼                ▼                    ▼
+┌──────────┐  ┌──────────────┐  ┌──────────────────────┐
+│需求分析  │  │ 课程规划       │  │ 资源推荐 ∥ 评估反馈    │
+│Agent     │  │ Agent        │  │ Agent  ∥  Agent       │
+│LLM提取   │  │ LLM生成      │  │ Self-RAG+Hybrid      │
+│+正则备份 │  │ 阶段化学习路径 │  │ +LLM判断(CRAG可选)   │
+└──────────┘  └──────────────┘  └──────────────────────┘
+                                       │
+                          ┌────────────┴────────────┐
+                          ▼                         ▼
+              ┌────────────────────────┐  ┌────────────┐
+              │ ChromaDB 本地知识库      │  │ Tavily 网络 │
+              │ Hybrid Search:          │  │ 搜索 (可选) │
+              │ Dense + BM25 + RRF      │  │            │
+              │ BGE中文Embedding        │  │            │
+              └────────────────────────┘  └────────────┘
 ```
 
 ## ✨ 核心特性
@@ -52,10 +55,23 @@
 - **三级资源获取策略**：本地 ChromaDB 知识库 → Tavily 网络搜索 → LLM 智能生成
 - **查询自动改写**：检索结果不足时自动改写查询重试（最多 2 次）
 - **来源清晰标注**：每个资源标注 `knowledge_base` / `web_search` / `llm_generated`
+- **CRAG 支持**：可选 LLM 逐文档相关性判断 + 知识分解
+- **不相关结果过滤**：自动丢弃低相似度（<0.15）的知识库结果
+
+### 🧪 Hybrid Search 混合检索
+- **Dense + Sparse**：稠密向量（语义）+ BM25 稀疏（关键词）双路检索
+- **RRF 融合**：Reciprocal Rank Fusion 算法融合两路结果
+- **中文 Embedding**：优先使用 BGE-small-zh-v1.5 中文模型
 
 ### 📊 6 维度评估体系
 - 目标可行性 · 内容合理性 · 时间安排 · 方法适配性 · 进阶逻辑 · 个性化匹配
-- 评分低于阈值自动触发计划再生
+- 评分低于阈值自动触发计划再生（最多 3 轮）
+
+### 🛡️ 工程性增强
+- **配置外部化**：RAG 阈值、再生轮数等参数从 config.py 统一管理，支持环境变量覆盖
+- **熔断器**：CircuitBreaker 防止外部依赖故障导致级联失败
+- **请求追踪**：每个请求生成 UUID request_id，支持全链路日志关联
+- **结构化日志**：关键事件以 JSON 格式输出，便于监控分析
 
 ### 🎨 现代 Web 界面
 - React 18 + TypeScript + TailwindCSS
@@ -84,12 +100,12 @@
 ### 环境要求
 - Python 3.12+
 - Node.js 18+
-- DeepSeek API Key
+- DeepSeek API Key（必需）
+- Tavily API Key（可选，用于网络搜索）
 
 ### 1. 克隆项目
 ```bash
-git clone https://github.com/1t8y/multi-agent-learning-planner.git
-cd multi-agent-learning-planner
+cd c:\ai学习
 ```
 
 ### 2. 安装依赖
@@ -98,38 +114,69 @@ cd multi-agent-learning-planner
 cd learning-planning-multi-agent
 pip install -r requirements.txt
 
-# 前端
+# 前端（根目录）
 cd ..
 npm install
 ```
 
 ### 3. 配置 API Key
-在 `learning-planning-multi-agent/` 下创建 `.env`：
+在 `learning-planning-multi-agent/` 下创建 `.env` 文件：
 ```env
 DEEPSEEK_API_KEY=sk-your-key-here
 TAVILY_API_KEY=tvly-your-key-here   # 可选，用于网络搜索
+
+# 可选：RAG参数配置
+RAG_SIMILARITY_THRESHOLD=0.5
+RAG_MIN_KB_SIMILARITY=0.15
+RAG_MAX_REWRITE_TIMES=2
+REGENERATION_THRESHOLD=6.0
+MAX_REGENERATION_ROUNDS=3
 ```
 
 ### 4. 启动
+
+**方式一：Web 界面（推荐）**
 ```bash
 # 终端 A：启动后端
 cd learning-planning-multi-agent
 python api_server.py                 # http://localhost:8000
 
 # 终端 B：启动前端
+cd ..
 npm run dev                          # http://localhost:5173
 ```
 
-或者直接命令行测试：
+**方式二：命令行测试**
 ```bash
+cd learning-planning-multi-agent
 python graph_orchestrator.py
 ```
+
+**方式三：运行测试套件**
+```bash
+cd learning-planning-multi-agent
+
+# 模块级测试（CI用）
+python test_modules.py
+
+# 端到端测试
+python test_e2e.py
+
+# 检索评估对比
+python evaluate.py
+```
+
+### 5. 查看日志和评价数据
+- 后端日志：控制台输出，包含 request_id、各阶段执行详情
+- 向量数据库统计：`python -c "from vector_store import init_vector_store_with_seed_data; print(init_vector_store_with_seed_data().get_stats())"`
+- Swagger 文档：`http://localhost:8000/docs`
 
 ---
 
 ## 🧩 项目结构
 
 ```
+c:\ai学习/
 ├── api/
 │   └── plan.py                      # Vercel Serverless 函数
 ├── src/                             # React 前端
@@ -139,28 +186,48 @@ python graph_orchestrator.py
 │   │   ├── RequirementResult.tsx    # 需求分析卡片
 │   │   ├── PlanResult.tsx           # 学习计划卡片
 │   │   ├── ResourcesResult.tsx      # 资源推荐卡片
-│   │   └── AssessmentResult.tsx     # 评估反馈卡片
+│   │   ├── AssessmentResult.tsx     # 评估反馈卡片
+│   │   ├── ResourceFeedback.tsx     # 资源反馈组件
+│   │   ├── LoadingSpinner.tsx       # 加载动画
+│   │   ├── ResultCard.tsx           # 结果卡片基类
+│   │   └── Header.tsx               # 页头组件
 │   ├── store/planStore.ts           # Zustand 状态管理
 │   ├── utils/api.ts                 # API 调用封装
-│   └── types/                       # TypeScript 类型
+│   ├── types/index.ts               # TypeScript 类型
+│   └── App.tsx                      # 主应用
 ├── learning-planning-multi-agent/   # Python 后端
 │   ├── graph_orchestrator.py        # LangGraph 编排器（核心）
 │   ├── requirement_extractor.py     # 需求分析 Agent
 │   ├── course_planner.py            # 课程规划 Agent
 │   ├── resource_recommender.py      # 资源推荐 Agent
 │   ├── assessment_feedback.py       # 评估反馈 Agent（6维度）
-│   ├── self_rag_recommender.py      # Self-RAG 检索工作流
-│   ├── vector_store.py              # ChromaDB 向量数据库管理
+│   ├── self_rag_recommender.py      # Self-RAG 检索工作流 + CRAG 支持
+│   ├── vector_store.py              # ChromaDB + Hybrid Search (Dense+BM25+RRF)
 │   ├── web_search.py                # Tavily 网络搜索
 │   ├── feedback_manager.py          # 用户反馈管理
-│   ├── base_agent.py                # Agent 基类
-│   ├── config.py                    # 配置管理
-│   ├── api_server.py                # FastAPI 服务
-│   └── agent_coordinator.py         # 传统线程版协调器（备用）
+│   ├── base_agent.py                # Agent 基类 + CircuitBreaker
+│   ├── config.py                    # 配置管理（单例，支持环境变量）
+│   ├── api_server.py                # FastAPI 服务（lifespan 启动）
+│   ├── agent_coordinator.py         # 传统线程版协调器（备用）
+│   ├── evaluate.py                  # 检索评估脚本（HR@5/MRR/P@3）
+│   ├── test_modules.py              # 模块级测试（CI）
+│   ├── test_e2e.py                  # 端到端测试
+│   ├── download_chroma_model.py     # Chroma 模型下载工具
+│   ├── manual_download_model.py     # 手动模型下载
+│   ├── hermes_sync.py               # Hermes 看板同步（可选）
+│   ├── requirements.txt
+│   ├── .env.example
+│   └── README.md
+├── .github/workflows/
+│   └── test.yml                     # CI 自动测试
 ├── vercel.json                      # Vercel 部署配置
-├── requirements.txt                 # Python 依赖
+├── package.json
+├── tsconfig.json
 ├── vite.config.ts
-└── package.json
+├── tailwind.config.js
+├── postcss.config.js
+├── index.html
+└── README.md
 ```
 
 ---
@@ -169,14 +236,16 @@ python graph_orchestrator.py
 
 | 层级 | 技术 |
 |------|------|
-| **Agent 编排** | LangGraph StateGraph（状态图 + 条件边 + 并行分支） |
+| **Agent 编排** | LangGraph StateGraph（状态图 + 条件边 + 并行分支 + MemorySaver） |
 | **AI 模型** | DeepSeek API（chat 模型，支持工具调用和 JSON 输出） |
-| **向量数据库** | ChromaDB（本地持久化，相似度检索 + 领域过滤） |
+| **向量数据库** | ChromaDB（本地持久化，Hybrid Search + BGE 中文 Embedding） |
+| **稀疏检索** | BM25Okapi（关键词匹配）+ RRF 融合算法 |
 | **网络搜索** | Tavily Search API（可选，补充知识库不覆盖的资源） |
 | **后端框架** | FastAPI + Uvicorn（完整 REST API + Swagger 文档） |
 | **前端框架** | React 18 + TypeScript + Vite |
 | **样式** | TailwindCSS |
 | **状态管理** | Zustand |
+| **容错机制** | Circuit Breaker（熔断器）+ 重试机制 |
 | **部署** | Vercel（前端静态 + Python Serverless） |
 
 ---
@@ -276,13 +345,23 @@ POST /api/plan
 
 ## 🔄 更新日志
 
+### v2.2.0 (2026-06-01)
+- 🆕 **Hybrid Search 混合检索**：Dense 向量 + BM25 稀疏双路检索，RRF 融合
+- 🆕 **CRAG 支持**：可选 LLM 逐文档相关性判断 + 知识分解
+- 🆕 **中文 Embedding**：优先使用 BGE-small-zh-v1.5 中文模型（镜像加速）
+- 🆕 **配置外部化**：RAG 阈值、再生轮数等参数从 config.py 统一管理，支持环境变量覆盖
+- 🆕 **熔断器 CircuitBreaker**：防止外部依赖故障导致级联失败
+- 🆕 **请求追踪**：每个请求生成 UUID request_id，支持全链路日志关联
+- 🆕 **检索评估脚本**：evaluate.py 输出 HR@5 / MRR / P@3 量化指标
+- 🔧 修复需求提取：LLM 主提取 + 通用正则备份
+- 🔧 修复 FastAPI 启动：替换 `@app.on_event("startup")` 为 `lifespan` 上下文管理
+
 ### v2.0.0 (2026-05-30)
 - 🆕 **LangGraph 编排**：替换线程式协调器，支持声明式状态图、并行执行、条件再生
 - 🆕 **Self-RAG 智能检索**：ChromaDB → 查询改写 → Tavily → LLM 三级策略
 - 🆕 **6 维度评估**：新增进阶逻辑、个性化匹配评估维度
 - 🆕 **Vercel 部署**：Serverless 架构，前端 + Python API 在线可访问
 - 🆕 **前端 API 动态 URL**：开发/生产环境自适应
-- 🔧 修复需求提取：LLM 主提取 + 通用正则备份
 - 🔧 修复资源推荐：过滤不相关 KB 结果，智能回退 LLM 生成
 - 🔧 修复再生死循环：迭代计数器放入节点函数
 

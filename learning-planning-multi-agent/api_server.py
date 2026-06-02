@@ -12,6 +12,7 @@
 import os
 import json
 from typing import Dict, Any, Optional
+from contextlib import asynccontextmanager
 
 try:
     from fastapi import FastAPI, HTTPException
@@ -24,8 +25,15 @@ except ImportError:
 
 
 if FASTAPI_AVAILABLE:
-    app = FastAPI(title="学习规划助手API", version="1.0.0")
-    
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
+        init_services()
+        init_orchestrator()
+        yield
+
+    app = FastAPI(title="学习规划助手API", version="1.0.0", lifespan=lifespan)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -104,12 +112,6 @@ def init_orchestrator():
 
 
 if FASTAPI_AVAILABLE:
-    @app.on_event("startup")
-    async def startup_event():
-        os.chdir(os.path.dirname(os.path.abspath(__file__)))
-        init_services()
-        init_orchestrator()
-
     @app.post("/api/plan")
     async def generate_plan(request: PlanRequest):
         """生成学习规划（LangGraph编排）"""
