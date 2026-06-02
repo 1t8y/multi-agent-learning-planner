@@ -17,6 +17,17 @@ from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
+# ── 绕过 Windows SSL 证书问题 + 使用国内 HuggingFace 镜像 ──
+os.environ.setdefault('HF_HUB_DISABLE_SSL_VERIFY', '1')
+os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
+os.environ.setdefault('CURL_CA_BUNDLE', '')
+os.environ.setdefault('REQUESTS_CA_BUNDLE', '')
+try:
+    import ssl
+    ssl._create_default_https_context = ssl._create_unverified_context
+except Exception:
+    pass
+
 try:
     import chromadb
     from chromadb.config import Settings
@@ -122,15 +133,54 @@ class VectorStoreManager:
         )
     
     def _init_collection(self):
-        """初始化或获取资源集合"""
+        """初始化或获取资源集合（使用中文 Embedding 模型）"""
         try:
+            emb_fn = self._create_embedding_function()
             self.collection = self.client.get_or_create_collection(
                 name=self.COLLECTION_NAME,
+                embedding_function=emb_fn,
                 metadata={"description": "学习资源知识库"}
             )
+            print(f"[vector_store] Embedding: {getattr(emb_fn, '_model_name', 'default')}")
         except Exception as e:
             print(f"[vector_store] 创建集合失败: {e}")
             raise
+
+    def _create_embedding_function(self):
+        """创建 Embedding 函数，优先使用中文 BGE 模型（镜像下载）"""
+        model_name = "BAAI/bge-small-zh-v1.5"
+
+        # 方案1: sentence-transformers 加载中文 BGE
+        try:
+            from sentence_transformers import SentenceTransformer
+            from chromadb.api.types import EmbeddingFunction
+
+            class BGEEmbeddingFunction(EmbeddingFunction):
+                def __init__(self, model_name):
+                    self._model_name = model_name
+                    self._model = SentenceTransformer(model_name)
+
+                def __call__(self, input):
+                    return self._model.encode(input).tolist()
+
+            emb_fn = BGEEmbeddingFunction(model_name)
+            emb_fn._model_name = model_name  # type: ignore
+            print(f"[vector_store] Embedding: {model_name} (中文)")
+            return emb_fn
+        except Exception as e:
+            print(f"[vector_store] BGE 加载失败: {e}")
+
+        # 方案2: ONNX 版本（无需 PyTorch）
+        try:
+            from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+            print("[vector_store] Embedding: ONNX (英文)")
+            return ONNXMiniLM_L6_V2()
+        except Exception:
+            pass
+
+        # 方案3: Chroma 默认
+        print("[vector_store] Embedding: Chroma 默认")
+        return None
     
     def add_resource(self, 
                      title: str, 
