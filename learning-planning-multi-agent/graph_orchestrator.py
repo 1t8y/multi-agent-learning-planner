@@ -17,11 +17,22 @@ LangGraph 多智能体编排器
 """
 
 import json
+import uuid
 import logging
 from typing import TypedDict, Optional, List, Dict, Any, Literal
 
 logging.basicConfig(level=logging.INFO, format="[GraphOrch] %(message)s")
 logger = logging.getLogger(__name__)
+
+# ── 从配置读取再生阈值 ──
+try:
+    from config import config
+    rag_config = config.get_defaults().get('rag', {})
+    REGENERATION_THRESHOLD = rag_config.get('regeneration_threshold', 6.0)
+    MAX_REGENERATION_ROUNDS = rag_config.get('max_regeneration_rounds', 3)
+except Exception:
+    REGENERATION_THRESHOLD = 6.0
+    MAX_REGENERATION_ROUNDS = 3
 
 # ── LangGraph 软依赖 ──
 try:
@@ -42,11 +53,6 @@ from course_planner import CoursePlannerAgent
 from resource_recommender import ResourceRecommenderAgent
 from assessment_feedback import AssessmentFeedbackAgent
 
-# ── 再生阈值 ──
-REGENERATION_THRESHOLD = 6.0   # 平均分数低于此值触发再生
-MAX_REGENERATION_ROUNDS = 3    # 最多再生次数
-
-
 # ══════════════════════════════════════════════════════════════════════
 # 状态定义
 # ══════════════════════════════════════════════════════════════════════
@@ -61,6 +67,9 @@ except ImportError:
 
 class LearningState(TypedDict, total=False):
     """多智能体学习规划流水线的共享状态"""
+    # 请求追踪
+    request_id: str
+
     # 输入（仅 extract 写入，串行安全）
     user_input: str
 
@@ -77,6 +86,10 @@ class LearningState(TypedDict, total=False):
     iteration_count: int
     assessment_feedback_for_regeneration: str
     _need_regenerate: bool
+
+    # Human-in-the-Loop（人工评审）
+    user_feedback: str
+    user_approved: bool
 
     # 错误
     error: str
@@ -268,9 +281,12 @@ class GraphOrchestrator:
         return "done"
 
     # ── 编译状态图 ──
-    def compile(self):
+    def compile(self, enable_interrupt: bool = False):
         """
         构建并编译 LangGraph 状态图
+
+        Args:
+            enable_interrupt: 是否启用 merge 后中断等人审 (Human-in-the-Loop)
 
         Returns:
             编译后的可执行图
@@ -294,41 +310,37 @@ class GraphOrchestrator:
         graph.add_node("merge", self._node_merge)
 
         # ── 定义边（流转路径） ──
-        # 串行: extract → plan
         graph.add_edge("extract", "plan")
-
-        # 并行分支: plan → recommend 和 plan → assess
         graph.add_edge("plan", "recommend")
         graph.add_edge("plan", "assess")
-
-        # 汇聚: recommend → merge, assess → merge
         graph.add_edge("recommend", "merge")
         graph.add_edge("assess", "merge")
 
-        # 条件边: merge → plan (再生) 或 merge → END (完成)
         graph.add_conditional_edges(
             "merge",
             self._should_regenerate,
-            {
-                "regenerate": "plan",
-                "done": END,
-            }
+            {"regenerate": "plan", "done": END}
         )
 
-        # 设置入口
         graph.set_entry_point("extract")
 
-        # 编译（带内存检查点）
-        self._graph = graph.compile()
-        self._compiled = True
+        # 编译（可选 interrupted + checkpointer 用于人工评审）
+        compile_args = {}
+        if enable_interrupt:
+            compile_args["interrupt_after"] = ["merge"]
+            compile_args["checkpointer"] = MemorySaver()
 
-        logger.info("LangGraph 状态图编译完成")
+        self._graph = graph.compile(**compile_args)
+        self._compiled = True
+        self._enable_interrupt = enable_interrupt
+
+        logger.info(f"LangGraph 状态图编译完成 (interrupt={enable_interrupt})")
         return self._graph
 
     # ── 便捷方法 ──
     def invoke(self, user_input: str) -> Dict[str, Any]:
         """
-        执行完整的学习规划流程
+        执行完整的学习规划流程（支持 Human-in-the-Loop 中断）
 
         Args:
             user_input: 用户的学习需求原始文本
@@ -339,7 +351,15 @@ class GraphOrchestrator:
         if not self._compiled:
             self.compile()
 
+        request_id = str(uuid.uuid4())[:8]
+        logger.info(json.dumps({
+            "request_id": request_id,
+            "event": "invoke_start",
+            "input_preview": user_input[:80]
+        }, ensure_ascii=False))
+
         initial_state: LearningState = {
+            "request_id": request_id,
             "user_input": user_input,
             "requirement_data": {},
             "plan_data": {},
@@ -349,10 +369,34 @@ class GraphOrchestrator:
             "iteration_count": 0,
             "assessment_feedback_for_regeneration": "",
             "error": "",
+            "user_feedback": "",
+            "user_approved": False,
         }
 
-        logger.info(f"开始执行流程: {user_input[:80]}...")
-        final_state = self._graph.invoke(initial_state)
+        # invoke 时传 thread_id（checkpointer 需要）
+        invoke_config = {"configurable": {"thread_id": request_id}} if self._enable_interrupt else None
+        final_state = self._graph.invoke(initial_state, invoke_config) if invoke_config else self._graph.invoke(initial_state)
+
+        # 检查是否有中断（Human-in-the-Loop 模式）
+        if self._enable_interrupt:
+            try:
+                graph_state = self._graph.get_state(invoke_config) if invoke_config else self._graph.get_state()
+                if graph_state.next:
+                    result = final_state.get("result", {})
+                    result["_paused_for_review"] = True
+                    result["_state_id"] = str(graph_state.config) if hasattr(graph_state, 'config') else ""
+                    result["_meta"] = {
+                        "iteration_count": final_state.get("iteration_count", 0),
+                        "was_regenerated": final_state.get("iteration_count", 0) > 0,
+                        "request_id": request_id,
+                    }
+                    logger.info(json.dumps({
+                        "request_id": request_id,
+                        "event": "paused_for_review",
+                    }, ensure_ascii=False))
+                    return result
+            except Exception:
+                pass
 
         # 返回结构化的结果
         result = final_state.get("result", {})
@@ -363,7 +407,14 @@ class GraphOrchestrator:
         result["_meta"] = {
             "iteration_count": final_state.get("iteration_count", 0),
             "was_regenerated": final_state.get("iteration_count", 0) > 0,
+            "request_id": request_id,
         }
+
+        logger.info(json.dumps({
+            "request_id": request_id,
+            "event": "invoke_complete",
+            "iterations": final_state.get("iteration_count", 0),
+        }, ensure_ascii=False))
 
         return result
 

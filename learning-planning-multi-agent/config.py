@@ -50,8 +50,19 @@ class ConfigManager:
             'temperature': 0.3,
             'timeout': 30,
             'retry_count': 2,
-            'sync_mode': 'trae_to_hermes'
+            'sync_mode': 'trae_to_hermes',
+            'rag': {
+                'similarity_threshold': float(os.getenv('RAG_SIMILARITY_THRESHOLD', '0.5')),
+                'min_kb_similarity': float(os.getenv('RAG_MIN_KB_SIMILARITY', '0.15')),
+                'max_rewrite_times': int(os.getenv('RAG_MAX_REWRITE_TIMES', '2')),
+                'regeneration_threshold': float(os.getenv('REGENERATION_THRESHOLD', '6.0')),
+                'max_regeneration_rounds': int(os.getenv('MAX_REGENERATION_ROUNDS', '3')),
+            }
         }
+
+    def get_defaults(self) -> Dict[str, Any]:
+        """获取所有默认配置"""
+        return self._config.get('defaults', {})
     
     def _load_json_config(self):
         """加载JSON配置文件"""

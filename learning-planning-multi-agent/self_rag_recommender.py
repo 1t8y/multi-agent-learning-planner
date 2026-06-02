@@ -76,7 +76,17 @@ class SelfRAGRecommender:
         self.vector_store = None
         self.web_search = None
         self._initialized = False
-        
+
+        # 从全局配置读取 RAG 参数（支持环境变量覆盖）
+        try:
+            from config import config
+            rag_config = config.get_defaults().get('rag', {})
+            self.SIMILARITY_THRESHOLD = rag_config.get('similarity_threshold', 0.5)
+            self.MIN_KB_SIMILARITY = rag_config.get('min_kb_similarity', 0.15)
+            self.MAX_REWRITE_TIMES = rag_config.get('max_rewrite_times', 2)
+        except Exception:
+            pass  # 使用类默认值
+
         self._init_services()
     
     def _init_services(self):
@@ -145,7 +155,8 @@ class SelfRAGRecommender:
             results = self.vector_store.search(
                 query=query,
                 field=field if field != "其他" else None,
-                top_k=self.MAX_KB_RESULTS
+                top_k=self.MAX_KB_RESULTS,
+                mode="hybrid"
             )
             
             state.kb_results = results
@@ -165,10 +176,47 @@ class SelfRAGRecommender:
         
         return state
     
-    def _evaluate_results(self, state: RAGState) -> str:
+    def _judge_relevance(self, query: str, document: str) -> str:
+        """让 LLM 判断文档是否与查询相关（CRAG 知识分解）"""
+        if not document or len(document) < 20:
+            return "irrelevant"
+        prompt = f"""判断以下文档内容是否与用户问题相关。
+
+用户问题：{query}
+
+文档内容：
+{document[:500]}
+
+请返回JSON：
+{{"relevance": "relevant/irrelevant/partially_relevant", "reason": "..."}}
+"""
+        try:
+            import requests as _r
+            from config import config as _cfg
+            resp = _r.post(
+                _cfg.get_api_base_url(),
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {_cfg.get_api_key()}"},
+                json={"model": "deepseek-chat", "max_tokens": 200, "temperature": 0,
+                      "messages": [{"role": "user", "content": prompt}]},
+                timeout=15
+            )
+            content = resp.json()["choices"][0]["message"]["content"]
+            import re as _re
+            match = _re.search(r'\{[\s\S]*\}', content)
+            if match:
+                return json.loads(match.group(0)).get("relevance", "irrelevant")
+        except Exception:
+            pass
+        return "irrelevant"
+
+    def _evaluate_results(self, state: RAGState, use_llm: bool = False) -> str:
         """
         评估检索结果是否足够
-        
+
+        Args:
+            state: RAG 状态
+            use_llm: 是否启用 CRAG LLM 逐文档判断
+
         Returns:
             "sufficient": 结果足够，直接推荐
             "insufficient": 结果不足，需要改写查询
@@ -177,15 +225,38 @@ class SelfRAGRecommender:
         if not state.kb_results:
             print("[SelfRAG] 知识库无结果，尝试网络搜索")
             return "kb_empty"
-        
+
+        if use_llm:
+            relevant = []
+            for doc in state.kb_results:
+                judgment = self._judge_relevance(
+                    state.learning_objective,
+                    doc.get("description", "")
+                )
+                if judgment == "relevant":
+                    relevant.append(doc)
+                elif judgment == "partially_relevant":
+                    # 知识分解：拆段落重新评估
+                    paragraphs = doc.get("description", "").split("\n\n")
+                    for para in paragraphs:
+                        if len(para) < 20:
+                            continue
+                        if self._judge_relevance(state.learning_objective, para) == "relevant":
+                            doc_with_para = {**doc, "description": para}
+                            relevant.append(doc_with_para)
+                            break
+            state.kb_results = relevant
+            return "sufficient" if relevant else "insufficient"
+
+        # 原有阈值逻辑（保留不变）
         if state.kb_relevance_score >= self.SIMILARITY_THRESHOLD:
             print(f"[SelfRAG] 结果足够（相似度 {state.kb_relevance_score:.2f} >= {self.SIMILARITY_THRESHOLD}）")
             return "sufficient"
-        
+
         if state.rewrite_count >= self.MAX_REWRITE_TIMES:
             print(f"[SelfRAG] 已达最大改写次数（{self.MAX_REWRITE_TIMES}），尝试网络搜索")
             return "kb_empty"
-        
+
         print(f"[SelfRAG] 结果不足（相似度 {state.kb_relevance_score:.2f} < {self.SIMILARITY_THRESHOLD}），需要改写查询")
         return "insufficient"
     

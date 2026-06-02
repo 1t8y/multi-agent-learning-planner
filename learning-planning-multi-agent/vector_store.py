@@ -25,6 +25,13 @@ except ImportError:
     CHROMA_AVAILABLE = False
     print("[vector_store] 警告: chromadb 未安装，向量数据库功能不可用")
 
+try:
+    from rank_bm25 import BM25Okapi
+    BM25_AVAILABLE = True
+except ImportError:
+    BM25_AVAILABLE = False
+    print("[vector_store] 警告: rank_bm25 未安装，稀疏检索功能不可用")
+
 
 @dataclass
 class LearningResource:
@@ -70,6 +77,7 @@ class VectorStoreManager:
     
     COLLECTION_NAME = "learning_resources"
     DEFAULT_DB_PATH = "./chroma_db"
+    RRF_K = 60  # RRF 融合常数
     
     def __init__(self, db_path: Optional[str] = None):
         """
@@ -82,7 +90,13 @@ class VectorStoreManager:
         self.client = None
         self.collection = None
         self._initialized = False
-        
+
+        # ---- BM25 稀疏检索相关 ----
+        self.bm25 = None
+        self._bm25_docs = []
+        self._bm25_ids = []
+        self._bm25_stale = True
+
         if not CHROMA_AVAILABLE:
             print("[vector_store] ChromaDB不可用，请运行: pip install chromadb")
             return
@@ -174,8 +188,9 @@ class VectorStoreManager:
             )
             
             print(f"[vector_store] 资源已添加: {title} (ID: {resource_id})")
+            self._bm25_stale = True
             return resource_id
-            
+
         except Exception as e:
             print(f"[vector_store] 添加资源失败: {e}")
             return None
@@ -207,50 +222,55 @@ class VectorStoreManager:
         
         return added_ids
     
-    def search(self, 
-               query: str, 
+    def search(self,
+               query: str,
                field: Optional[str] = None,
                level: Optional[str] = None,
-               top_k: int = 5) -> List[Dict]:
+               top_k: int = 5,
+               mode: str = "hybrid") -> List[Dict]:
         """
-        基于相似度搜索资源
-        
+        增强搜索：dense | sparse | hybrid
+
         Args:
             query: 查询文本
             field: 可选领域过滤
             level: 可选难度过滤
             top_k: 返回结果数量
-            
+            mode: 检索模式 (dense / sparse / hybrid)
+
         Returns:
             匹配的资源列表
         """
         if not self._initialized:
             return []
-        
-        try:
-            where_filter = {}
-            if field:
-                where_filter["field"] = field
-            if level:
-                where_filter["level"] = level
-            
-            if where_filter:
-                results = self.collection.query(
-                    query_texts=[query],
-                    n_results=top_k,
-                    where=where_filter
-                )
-            else:
-                results = self.collection.query(
-                    query_texts=[query],
-                    n_results=top_k
-                )
-            
-            return self._format_search_results(results)
-            
-        except Exception as e:
-            print(f"[vector_store] 搜索失败: {e}")
-            return []
+
+        dense_results = []
+        if mode in ("dense", "hybrid"):
+            try:
+                where_filter = {}
+                if field:
+                    where_filter["field"] = field
+                if level:
+                    where_filter["level"] = level
+                if where_filter:
+                    raw = self.collection.query(query_texts=[query], n_results=top_k, where=where_filter)
+                else:
+                    raw = self.collection.query(query_texts=[query], n_results=top_k)
+                dense_results = self._format_search_results(raw)
+            except Exception as e:
+                print(f"[vector_store] 稠密检索失败: {e}")
+
+        sparse_results = []
+        if mode in ("sparse", "hybrid"):
+            if self._bm25_stale:
+                self._rebuild_bm25_index()
+            sparse_results = self._sparse_search(query, top_k)
+
+        if mode == "hybrid" and dense_results and sparse_results:
+            return self._rrf_merge(dense_results, sparse_results, top_k)
+        elif mode == "sparse":
+            return sparse_results[:top_k]
+        return dense_results[:top_k]
     
     def _format_search_results(self, results: Dict) -> List[Dict]:
         """格式化搜索结果"""
@@ -281,7 +301,64 @@ class VectorStoreManager:
             })
         
         return formatted
-    
+
+    def _rebuild_bm25_index(self):
+        """从 Chroma 集合重建 BM25 索引"""
+        if not BM25_AVAILABLE:
+            return
+        try:
+            all_data = self.collection.get()
+            if not all_data or not all_data["documents"]:
+                self._bm25_stale = False
+                return
+            tokenized = [list(doc.replace("\n", " ")) for doc in all_data["documents"]]
+            self.bm25 = BM25Okapi(tokenized)
+            self._bm25_docs = all_data["documents"]
+            self._bm25_ids = all_data["ids"][0] if all_data["ids"] else []
+            self._bm25_stale = False
+            print(f"[vector_store] BM25索引已重建（{len(self._bm25_ids)}个文档）")
+        except Exception as e:
+            print(f"[vector_store] BM25索引重建失败: {e}")
+
+    def _sparse_search(self, query: str, top_k: int = 5) -> List[Dict]:
+        """BM25 关键词稀疏检索"""
+        if not BM25_AVAILABLE or self.bm25 is None:
+            return []
+        query_tokens = list(query.replace(" ", ""))
+        scores = self.bm25.get_scores(query_tokens)
+        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+        ranked = [(i, s) for i, s in ranked if s > 0]
+        results = []
+        for idx, score in ranked[:top_k]:
+            doc_id = self._bm25_ids[idx] if idx < len(self._bm25_ids) else ""
+            doc_text = self._bm25_docs[idx] if idx < len(self._bm25_docs) else ""
+            results.append({
+                "id": doc_id,
+                "similarity": float(score),
+                "bm25_score": float(score),
+                "description": doc_text,
+                "rank": len(results) + 1,
+                "source": "bm25"
+            })
+        return results
+
+    def _rrf_merge(self, dense_results: List[Dict], sparse_results: List[Dict], top_k: int = 5) -> List[Dict]:
+        """RRF 融合稠密和稀疏检索结果"""
+        dense_rank = {r["id"]: i + 1 for i, r in enumerate(dense_results)}
+        sparse_rank = {r["id"]: i + 1 for i, r in enumerate(sparse_results)}
+        all_ids = set(dense_rank.keys()) | set(sparse_rank.keys())
+        scored = []
+        for doc_id in all_ids:
+            rrf_score = 0.0
+            rrf_score += 1.0 / (self.RRF_K + dense_rank.get(doc_id, 999))
+            rrf_score += 1.0 / (self.RRF_K + sparse_rank.get(doc_id, 999))
+            raw = next((r for r in dense_results if r["id"] == doc_id), None)
+            if raw is None:
+                raw = next((r for r in sparse_results if r["id"] == doc_id), {})
+            scored.append({**raw, "similarity": round(rrf_score, 5)})
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+        return scored[:top_k]
+
     def update_feedback(self, resource_id: str, rating: float) -> bool:
         """
         更新资源反馈评分

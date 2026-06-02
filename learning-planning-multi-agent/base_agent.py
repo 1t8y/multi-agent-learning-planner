@@ -18,6 +18,38 @@ from abc import ABC, abstractmethod
 from config import config
 
 
+class CircuitBreaker:
+    """熔断器：连续失败 N 次后熔断 T 秒"""
+    def __init__(self, failure_threshold=3, recovery_timeout=30, name="default"):
+        self.failure_count = 0
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.last_failure_time = 0
+        self.state = "closed"
+        self.name = name
+
+    def call(self, fn, fallback=None):
+        if self.state == "open":
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = "half-open"
+            else:
+                print(f"[CircuitBreaker:{self.name}] 熔断中，返回降级结果")
+                return fallback() if fallback else None
+        try:
+            result = fn()
+            self.failure_count = 0
+            self.state = "closed"
+            return result
+        except Exception as e:
+            self.failure_count += 1
+            self.last_failure_time = time.time()
+            print(f"[CircuitBreaker:{self.name}] 失败 ({self.failure_count}/{self.failure_threshold}): {e}")
+            if self.failure_count >= self.failure_threshold:
+                self.state = "open"
+                print(f"[CircuitBreaker:{self.name}] 熔断打开，暂停 {self.recovery_timeout}s")
+            return fallback() if fallback else None
+
+
 class BaseAgent(ABC):
     """
     所有Agent的基类，提供通用功能
@@ -47,6 +79,7 @@ class BaseAgent(ABC):
         self.config = agent_config or {}
         self._configure()
         self._setup_monitoring()
+        self._circuit_breaker = CircuitBreaker(name=self.__class__.__name__)
     
     def _configure(self):
         """配置Agent参数，优先级：Agent配置 > 全局配置 > 默认值"""
@@ -186,17 +219,22 @@ class BaseAgent(ABC):
         return None
     
     def _call_api(self, user_message: str) -> Dict:
+        """熔断器包装的API调用"""
+        return self._circuit_breaker.call(
+            fn=lambda: self._do_call_api(user_message),
+            fallback=lambda: self._get_default_result()
+        )
+
+    def _do_call_api(self, user_message: str) -> Dict:
         """
-        调用DeepSeek API
-        
-        包含重试机制，支持指数退避策略
-        
+        实际DeepSeek API调用（包含重试机制）
+
         Args:
             user_message: 用户消息
-            
+
         Returns:
             解析后的JSON响应
-            
+
         Raises:
             ValueError: API密钥未设置
             RuntimeError: API调用失败（已重试最大次数）
