@@ -22,3 +22,7 @@ tavily-python>=0.3.0
 
 # HTTP客户端（异步）
 aiohttp>=3.9.0
+
+# 中文分词
+rank_bm25>=0.2.0
+jieba>=0.42.1

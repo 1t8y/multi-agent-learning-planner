@@ -43,6 +43,25 @@ except ImportError:
     BM25_AVAILABLE = False
     print("[vector_store] 警告: rank_bm25 未安装，稀疏检索功能不可用")
 
+try:
+    import jieba
+    JIEBA_AVAILABLE = True
+except ImportError:
+    JIEBA_AVAILABLE = False
+    print("[vector_store] 警告: jieba 未安装，稀疏检索使用字符级分词（效果较差）")
+
+
+def _tokenize_for_bm25(text: str) -> List[str]:
+    """
+    BM25 分词函数：优先使用 jieba 中文分词，回退到字符级分词
+    """
+    if not text:
+        return []
+    text = text.replace("\n", " ")
+    if JIEBA_AVAILABLE:
+        return [w for w in jieba.lcut(text) if w.strip()]
+    return list(text)
+
 
 @dataclass
 class LearningResource:
@@ -361,12 +380,13 @@ class VectorStoreManager:
             if not all_data or not all_data["documents"]:
                 self._bm25_stale = False
                 return
-            tokenized = [list(doc.replace("\n", " ")) for doc in all_data["documents"]]
+            tokenized = [_tokenize_for_bm25(doc) for doc in all_data["documents"]]
             self.bm25 = BM25Okapi(tokenized)
             self._bm25_docs = all_data["documents"]
             self._bm25_ids = all_data["ids"][0] if all_data["ids"] else []
             self._bm25_stale = False
-            print(f"[vector_store] BM25索引已重建（{len(self._bm25_ids)}个文档）")
+            tokenizer_info = "jieba中文分词" if JIEBA_AVAILABLE else "字符级分词"
+            print(f"[vector_store] BM25索引已重建（{len(self._bm25_ids)}个文档, {tokenizer_info}）")
         except Exception as e:
             print(f"[vector_store] BM25索引重建失败: {e}")
 
@@ -374,7 +394,7 @@ class VectorStoreManager:
         """BM25 关键词稀疏检索"""
         if not BM25_AVAILABLE or self.bm25 is None:
             return []
-        query_tokens = list(query.replace(" ", ""))
+        query_tokens = _tokenize_for_bm25(query)
         scores = self.bm25.get_scores(query_tokens)
         ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
         ranked = [(i, s) for i, s in ranked if s > 0]
