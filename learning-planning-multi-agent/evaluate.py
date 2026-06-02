@@ -4,11 +4,40 @@ import json
 from vector_store import VectorStoreManager, init_vector_store_with_seed_data
 
 TEST_CASES = [
+    # Python基础教程 - 5个查询变体
     {"query": "Python入门学习", "expected_titles": ["Python基础教程"]},
+    {"query": "零基础学Python编程", "expected_titles": ["Python基础教程"]},
+    {"query": "Python变量数据类型", "expected_titles": ["Python基础教程"]},
+    {"query": "Python控制流和函数", "expected_titles": ["Python基础教程"]},
+    {"query": "Python编程基础教程", "expected_titles": ["Python基础教程"]},
+
+    # 机器学习实战 - 5个查询变体
     {"query": "机器学习基础", "expected_titles": ["机器学习实战"]},
+    {"query": "sklearn机器学习算法", "expected_titles": ["机器学习实战"]},
+    {"query": "AI机器学习应用", "expected_titles": ["机器学习实战"]},
+    {"query": "机器学习从理论到实践", "expected_titles": ["机器学习实战"]},
+    {"query": "scikit-learn入门", "expected_titles": ["机器学习实战"]},
+
+    # Transformer原理详解 - 5个查询变体
     {"query": "Transformer注意力机制", "expected_titles": ["Transformer原理详解"]},
+    {"query": "大模型Transformer架构", "expected_titles": ["Transformer原理详解"]},
+    {"query": "NLP注意力机制", "expected_titles": ["Transformer原理详解"]},
+    {"query": "Transformer模型原理", "expected_titles": ["Transformer原理详解"]},
+    {"query": "自注意力机制详解", "expected_titles": ["Transformer原理详解"]},
+
+    # 高等数学核心概念 - 5个查询变体
     {"query": "微积分线性代数", "expected_titles": ["高等数学核心概念"]},
+    {"query": "大学高数概率论", "expected_titles": ["高等数学核心概念"]},
+    {"query": "数学基础微积分", "expected_titles": ["高等数学核心概念"]},
+    {"query": "线性代数基础课程", "expected_titles": ["高等数学核心概念"]},
+    {"query": "高数入门学习", "expected_titles": ["高等数学核心概念"]},
+
+    # React官方文档 - 5个查询变体
     {"query": "React前端框架", "expected_titles": ["React官方文档"]},
+    {"query": "React Hooks入门", "expected_titles": ["React官方文档"]},
+    {"query": "React TypeScript开发", "expected_titles": ["React官方文档"]},
+    {"query": "前端React框架", "expected_titles": ["React官方文档"]},
+    {"query": "React官方教程", "expected_titles": ["React官方文档"]},
 ]
 
 
