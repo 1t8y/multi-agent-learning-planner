@@ -1,20 +1,19 @@
 """评估脚本：跑测试集输出量化对比报告"""
 
 import json
-from vector_store import VectorStoreManager
+from vector_store import VectorStoreManager, init_vector_store_with_seed_data
 
 TEST_CASES = [
-    {"query": "Python面向对象编程", "expected_titles": ["Python基础教程"]},
-    {"query": "Transformer模型原理", "expected_titles": ["Transformer原理详解"]},
-    {"query": "React Hooks 入门", "expected_titles": ["React官方文档"]},
-    {"query": "高等数学微积分", "expected_titles": ["高等数学核心概念"]},
-    {"query": "机器学习算法实战", "expected_titles": ["机器学习实战"]},
-    # TODO: 扩展至 20-30 条
+    {"query": "Python入门学习", "expected_titles": ["Python基础教程"]},
+    {"query": "机器学习基础", "expected_titles": ["机器学习实战"]},
+    {"query": "Transformer注意力机制", "expected_titles": ["Transformer原理详解"]},
+    {"query": "微积分线性代数", "expected_titles": ["高等数学核心概念"]},
+    {"query": "React前端框架", "expected_titles": ["React官方文档"]},
 ]
 
 
 def evaluate_mode(mode="dense"):
-    store = VectorStoreManager()
+    store = init_vector_store_with_seed_data()
     hr_count = 0
     mrr_sum = 0.0
     precision_sum = 0.0
