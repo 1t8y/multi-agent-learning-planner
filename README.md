@@ -105,22 +105,46 @@
 
 ### 1. 克隆项目
 ```bash
-cd c:\ai学习
+git clone https://github.com/1t8y/multi-agent-learning-planner.git
+cd multi-agent-learning-planner
 ```
 
 ### 2. 安装依赖
 ```bash
+# 创建并激活 Python 虚拟环境
+python -m venv .venv
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+
+# macOS / Linux
+source .venv/bin/activate
+
 # 后端
 cd learning-planning-multi-agent
 pip install -r requirements.txt
 
 # 前端（根目录）
 cd ..
-npm install
+npm ci
 ```
 
 ### 3. 配置 API Key
-在 `learning-planning-multi-agent/` 下创建 `.env` 文件：
+从示例创建 `learning-planning-multi-agent/.env`，再填写真实密钥：
+
+Windows PowerShell：
+```powershell
+cd learning-planning-multi-agent
+Copy-Item .env.example .env
+```
+
+macOS / Linux：
+```bash
+cd learning-planning-multi-agent
+cp .env.example .env
+```
+
+`.env` 内容示例：
 ```env
 DEEPSEEK_API_KEY=sk-your-key-here
 TAVILY_API_KEY=tvly-your-key-here   # 可选，用于网络搜索
@@ -176,7 +200,7 @@ python evaluate.py
 ## 🧩 项目结构
 
 ```
-c:\ai学习/
+multi-agent-learning-planner/
 ├── api/
 │   └── plan.py                      # Vercel Serverless 函数
 ├── src/                             # React 前端
