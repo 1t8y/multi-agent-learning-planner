@@ -26,6 +26,7 @@ export interface PlanData {
 
 export interface Resource {
   id?: string;
+  rank?: number;
   phase: string;
   type: string;
   title: string;
@@ -35,6 +36,9 @@ export interface Resource {
   recommendation_reason: string;
   url: string;
   source?: 'knowledge_base' | 'web_search' | 'LLM生成';
+  similarity?: number;
+  rerank_score?: number;
+  rerank_confidence?: number;
 }
 
 export interface ResourcesData {
@@ -46,6 +50,21 @@ export interface RagInfo {
   kb_relevance: number;
   rewrite_count: number;
   used_web_search: boolean;
+  candidate_count?: number;
+  search_query?: string;
+  filters?: Record<string, unknown>;
+  rerank?: {
+    enabled: boolean;
+    available: boolean;
+    model: string;
+  };
+  quality?: {
+    score: number;
+    grade: 'high' | 'medium' | 'low' | string;
+    passed: boolean;
+    signals?: Record<string, number>;
+    issues?: string[];
+  };
 }
 
 export interface ResourcesDataWithRag extends ResourcesData {

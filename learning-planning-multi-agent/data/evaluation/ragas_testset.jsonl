@@ -1,0 +1,30 @@
+{"id":"python-001","question":"零基础学习 Python 应从哪些基础语法开始？","ground_truth":"","reference_contexts":[],"expected_sources":["Python基础教程"],"topic":"Python","difficulty":"基础","review_status":"pending"}
+{"id":"python-002","question":"Python 中变量和数据类型应该如何理解？","ground_truth":"","reference_contexts":[],"expected_sources":["Python基础教程"],"topic":"Python","difficulty":"基础","review_status":"pending"}
+{"id":"python-003","question":"Python 条件判断和循环适合解决什么问题？","ground_truth":"","reference_contexts":[],"expected_sources":["Python基础教程"],"topic":"Python","difficulty":"基础","review_status":"pending"}
+{"id":"python-004","question":"Python 函数的作用是什么，如何定义和调用？","ground_truth":"","reference_contexts":[],"expected_sources":["Python基础教程"],"topic":"Python","difficulty":"基础","review_status":"pending"}
+{"id":"python-005","question":"学习 Python 时如何通过练习巩固基础？","ground_truth":"","reference_contexts":[],"expected_sources":["Python基础教程"],"topic":"Python","difficulty":"基础","review_status":"pending"}
+{"id":"python-006","question":"零基础学习 Python 的合理顺序是什么？","ground_truth":"","reference_contexts":[],"expected_sources":["Python基础教程"],"topic":"Python","difficulty":"基础","review_status":"pending"}
+{"id":"ml-001","question":"机器学习入门需要哪些基础？","ground_truth":"","reference_contexts":[],"expected_sources":["机器学习实战"],"topic":"机器学习","difficulty":"基础","review_status":"pending"}
+{"id":"ml-002","question":"scikit-learn 通常用于什么类型的机器学习任务？","ground_truth":"","reference_contexts":[],"expected_sources":["机器学习实战"],"topic":"机器学习","difficulty":"基础","review_status":"pending"}
+{"id":"ml-003","question":"从理论到实践学习机器学习应如何安排顺序？","ground_truth":"","reference_contexts":[],"expected_sources":["机器学习实战"],"topic":"机器学习","difficulty":"基础","review_status":"pending"}
+{"id":"ml-004","question":"机器学习项目的一般工作流程是什么？","ground_truth":"","reference_contexts":[],"expected_sources":["机器学习实战"],"topic":"机器学习","difficulty":"进阶","review_status":"pending"}
+{"id":"ml-005","question":"如何理解监督学习中的训练和预测？","ground_truth":"","reference_contexts":[],"expected_sources":["机器学习实战"],"topic":"机器学习","difficulty":"进阶","review_status":"pending"}
+{"id":"ml-006","question":"机器学习初学者如何选择练习项目？","ground_truth":"","reference_contexts":[],"expected_sources":["机器学习实战"],"topic":"机器学习","difficulty":"基础","review_status":"pending"}
+{"id":"transformer-001","question":"Transformer 架构的核心思想是什么？","ground_truth":"","reference_contexts":[],"expected_sources":["Transformer原理详解"],"topic":"Transformer","difficulty":"进阶","review_status":"pending"}
+{"id":"transformer-002","question":"自注意力机制主要解决什么问题？","ground_truth":"","reference_contexts":[],"expected_sources":["Transformer原理详解"],"topic":"Transformer","difficulty":"进阶","review_status":"pending"}
+{"id":"transformer-003","question":"注意力机制在 NLP 中有什么作用？","ground_truth":"","reference_contexts":[],"expected_sources":["Transformer原理详解"],"topic":"Transformer","difficulty":"进阶","review_status":"pending"}
+{"id":"transformer-004","question":"大模型为什么普遍采用 Transformer 架构？","ground_truth":"","reference_contexts":[],"expected_sources":["Transformer原理详解"],"topic":"Transformer","difficulty":"进阶","review_status":"pending"}
+{"id":"transformer-005","question":"Transformer 中 Query、Key、Value 分别表示什么？","ground_truth":"","reference_contexts":[],"expected_sources":["Transformer原理详解"],"topic":"Transformer","difficulty":"进阶","review_status":"pending"}
+{"id":"transformer-006","question":"学习 Transformer 应如何理解编码器、解码器和注意力？","ground_truth":"","reference_contexts":[],"expected_sources":["Transformer原理详解"],"topic":"Transformer","difficulty":"进阶","review_status":"pending"}
+{"id":"math-001","question":"高等数学核心内容包含哪些部分？","ground_truth":"","reference_contexts":[],"expected_sources":["高等数学核心概念"],"topic":"数学","difficulty":"基础","review_status":"pending"}
+{"id":"math-002","question":"微积分在机器学习和数据分析中有什么作用？","ground_truth":"","reference_contexts":[],"expected_sources":["高等数学核心概念"],"topic":"数学","difficulty":"基础","review_status":"pending"}
+{"id":"math-003","question":"线性代数为什么是人工智能的重要数学基础？","ground_truth":"","reference_contexts":[],"expected_sources":["高等数学核心概念"],"topic":"数学","difficulty":"基础","review_status":"pending"}
+{"id":"math-004","question":"概率论和统计学在数据学习中如何应用？","ground_truth":"","reference_contexts":[],"expected_sources":["高等数学核心概念"],"topic":"数学","difficulty":"基础","review_status":"pending"}
+{"id":"math-005","question":"学习微积分、线性代数和概率论的合理顺序是什么？","ground_truth":"","reference_contexts":[],"expected_sources":["高等数学核心概念"],"topic":"数学","difficulty":"基础","review_status":"pending"}
+{"id":"math-006","question":"数学基础薄弱时如何开始学习机器学习所需数学？","ground_truth":"","reference_contexts":[],"expected_sources":["高等数学核心概念"],"topic":"数学","difficulty":"基础","review_status":"pending"}
+{"id":"react-001","question":"React 是什么，主要用于开发什么？","ground_truth":"","reference_contexts":[],"expected_sources":["React官方文档"],"topic":"React","difficulty":"基础","review_status":"pending"}
+{"id":"react-002","question":"React 官方文档适合解决哪些学习问题？","ground_truth":"","reference_contexts":[],"expected_sources":["React官方文档"],"topic":"React","difficulty":"基础","review_status":"pending"}
+{"id":"react-003","question":"学习 React 前需要哪些前端基础？","ground_truth":"","reference_contexts":[],"expected_sources":["React官方文档"],"topic":"React","difficulty":"基础","review_status":"pending"}
+{"id":"react-004","question":"React Hooks 的作用是什么？","ground_truth":"","reference_contexts":[],"expected_sources":["React官方文档"],"topic":"React","difficulty":"进阶","review_status":"pending"}
+{"id":"react-005","question":"TypeScript 在 React 项目中如何使用？","ground_truth":"","reference_contexts":[],"expected_sources":["React官方文档"],"topic":"React","difficulty":"进阶","review_status":"pending"}
+{"id":"react-006","question":"如何从零开始学习 React 并完成一个前端项目？","ground_truth":"","reference_contexts":[],"expected_sources":["React官方文档"],"topic":"React","difficulty":"基础","review_status":"pending"}

@@ -1,11 +1,14 @@
-# 敏感配置（禁止提交）
+# Secrets
 .env
-.env.local
 .env.*
+.env.local
 .env.*.local
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+!*.env.example
 
-# 证书和密钥
+# Certificates and credentials
 *.pem
 *.key
 *.crt
@@ -16,92 +19,80 @@ id_rsa*
 id_dsa*
 known_hosts
 authorized_keys
-
-# 凭据文件
 credentials.json
 secrets.json
 token.json
 *_token.*
 api_key.txt
 keys.json
-
-# 本地配置
 local_settings.py
 local_config.py
 *.local.py
 
-# Trae配置（包含API密钥）
+# Trae private configuration
 .trae/config/
 .trae/agents/
 .trae/documents/
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# 虚拟环境
+# Python runtime
+.venv/
 venv/
 env/
-.venv/
 env.local/
+__pycache__/
+*.py[cod]
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.cache/
+build/
 
-# IDE
-.vscode/
-.idea/
+# Frontend runtime and build output
+node_modules/
+dist/
+.vite/
+.vercel/
+
+# Local vector database and model data
+chroma_db/
+chroma_db_backup*/
+learning-planning-multi-agent/chroma_db/
+learning-planning-multi-agent/chroma_db_backup*/
+learning-planning-multi-agent/data/models/
+
+# User feedback and submitted resources
+learning-planning-multi-agent/data/feedback_records.json
+learning-planning-multi-agent/data/resource_submissions.json
+learning-planning-multi-agent/data/evaluation/ragas_runtime_dataset.jsonl
+
+# Logs and local OS files
+*.log
+*.out.log
+*.err.log
 *.swp
 *.swo
 *~
-
-# 日志和缓存
-*.log
-.cache/
-*.egg-info/
-
-# 操作系统
-.DS_Store
-Thumbs.db
-
-# 文档（可选）
-*.docx
+.tmp
+*.tmp
+.docx
 *.pdf
-
-# 前端依赖
-node_modules/
-dist/
-build/
-
-# Python依赖
-dist/
-build/
-
-# 旧版本Agent目录（不上传）
+.vscode/
+.idea/
+.claude/
+.trae/agents/
+.trae/config/
+.trae/documents/
 智能体agent/
 内核agent/
 需求分析agent/
-
-# 临时文档（不上传）
 改进文档/
 改进建议.md
 知识汇总/
 学习计划/
-
-# 临时文件
-*.tmp
-
-# 向量数据库和反馈数据（本地运行时生成）
-chroma_db/
-data/
-learning-planning-multi-agent/chroma_db/
-learning-planning-multi-agent/data/
-
-# Vercel
-.vercel
-api/__pycache__/
-
-# 个人文件
-.claude/
 resume_optimized.tex
-学习计划/
+.DS_Store
+Thumbs.db

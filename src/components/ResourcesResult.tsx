@@ -44,7 +44,7 @@ export function ResourcesResult({ data, learningObjective, onFeedbackSubmit, onA
       {ragInfo && (
         <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-3 mb-4">
           <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <span className="text-gray-600">
                 <span className="font-medium text-indigo-600">检索来源：</span>
                 {ragInfo.source_info || 'AI生成'}
@@ -53,6 +53,22 @@ export function ResourcesResult({ data, learningObjective, onFeedbackSubmit, onA
                 <span className="font-medium text-indigo-600">知识库匹配度：</span>
                 {(ragInfo.kb_relevance * 100).toFixed(0)}%
               </span>
+              {ragInfo.quality && (
+                <span className="text-gray-600">
+                  <span className="font-medium text-indigo-600">检索质量：</span>
+                  {ragInfo.quality.grade === 'high' ? '高' : ragInfo.quality.grade === 'medium' ? '中' : '低'}
+                  （{(ragInfo.quality.score * 100).toFixed(0)}%）
+                </span>
+              )}
+              {typeof ragInfo.candidate_count === 'number' && (
+                <span className="text-gray-600">
+                  <span className="font-medium text-indigo-600">候选：</span>
+                  {ragInfo.candidate_count} 条
+                </span>
+              )}
+              {ragInfo.rerank?.available && (
+                <span className="text-emerald-700">Cross-Encoder 已重排</span>
+              )}
             </div>
             {ragInfo.used_web_search && (
               <span className="flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">
@@ -142,6 +158,10 @@ function ResourceCard({ resource, index, learningObjective, onFeedbackSubmit }: 
           </div>
         </div>
         <div className="text-right">
+          {resource.rank && <p className="text-sm text-indigo-500">排序：#{resource.rank}</p>}
+          {typeof resource.rerank_confidence === 'number' && (
+            <p className="text-xs text-gray-400">重排置信度：{(resource.rerank_confidence * 100).toFixed(0)}%</p>
+          )}
           <p className="text-sm text-gray-500">难度：{resource.difficulty}</p>
           <p className="text-sm text-gray-500">时长：{resource.duration}</p>
         </div>

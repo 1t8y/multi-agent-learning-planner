@@ -429,7 +429,13 @@ class SelfRAGRecommender:
 
 def init_self_rag() -> SelfRAGRecommender:
     """初始化Self-RAG推荐器"""
-    return SelfRAGRecommender()
+    try:
+        from advanced_self_rag import AdvancedSelfRAGRecommender
+
+        return AdvancedSelfRAGRecommender()
+    except Exception as exc:
+        print(f"[SelfRAG] 增强链路初始化失败，回退基础实现: {exc}")
+        return SelfRAGRecommender()
 
 
 if __name__ == "__main__":

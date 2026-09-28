@@ -126,22 +126,21 @@ class ResourceRecommenderAgent(BaseAgent):
         print(f"[{self.AGENT_NAME}] 开始推荐学习资源: {learning_objective}")
 
         if self._rag_initialized and self.rag_recommender:
-            return self._recommend_with_rag(learning_objective, current_foundation, learning_plan)
+            return self._recommend_with_rag(requirement_info, learning_plan)
         else:
             print(f"[{self.AGENT_NAME}] Self-RAG未启用，使用传统LLM推荐（标注来源）")
             return self._recommend_with_llm(requirement_info, learning_plan)
 
-    def _recommend_with_rag(self,
-                            learning_objective: str,
-                            current_foundation: str,
-                            learning_plan: Dict) -> Dict:
+    def _recommend_with_rag(self, requirement_info: Dict, learning_plan: Dict) -> Dict:
         """使用Self-RAG智能推荐，如果结果不足则回退LLM生成"""
         print(f"[{self.AGENT_NAME}] 启用Self-RAG智能检索")
 
         rag_result = self.rag_recommender.recommend(
-            learning_objective=learning_objective,
-            current_foundation=current_foundation,
-            learning_plan=learning_plan
+            learning_objective=requirement_info.get("learning_objective", ""),
+            current_foundation=requirement_info.get("current_foundation", "零基础"),
+            learning_plan=learning_plan,
+            learning_preference=requirement_info.get("learning_preference"),
+            time_expectation=requirement_info.get("time_expectation"),
         )
 
         rag_resources = rag_result.get("resources", [])
@@ -152,10 +151,11 @@ class ResourceRecommenderAgent(BaseAgent):
         web_count = sum(1 for r in rag_resources if r.get("source") == "web_search")
 
         # 如果RAG结果不足（无资源或相关性太低），回退LLM
-        if not rag_resources:
+        quality_passed = rag_result.get("quality", {}).get("passed", True)
+        if not rag_resources or not quality_passed:
             print(f"[{self.AGENT_NAME}] RAG无相关结果 (KB相似度: {kb_relevance:.2f})，使用LLM生成")
             llm_result = self._recommend_with_llm(
-                {"learning_objective": learning_objective, "current_foundation": current_foundation},
+                requirement_info,
                 learning_plan
             )
             # 保留RAG来源信息
@@ -167,6 +167,12 @@ class ResourceRecommenderAgent(BaseAgent):
                 "kb_count": 0,
                 "web_count": 0,
                 "llm_count": len(llm_result.get("resources", [])),
+                "quality": rag_result.get("quality", {}),
+                "rerank": rag_result.get("rerank", {}),
+                "candidate_count": rag_result.get("candidate_count", 0),
+                "filters": rag_result.get("filters", {}),
+                "search_query": rag_result.get("search_query", ""),
+                "quality_fallback": not quality_passed,
             }
             return llm_result
 
@@ -181,6 +187,11 @@ class ResourceRecommenderAgent(BaseAgent):
                 "used_web_search": rag_result.get("used_web_search", False),
                 "kb_count": kb_count,
                 "web_count": web_count,
+                "quality": rag_result.get("quality", {}),
+                "rerank": rag_result.get("rerank", {}),
+                "candidate_count": rag_result.get("candidate_count", 0),
+                "filters": rag_result.get("filters", {}),
+                "search_query": rag_result.get("search_query", ""),
             }
         }
     

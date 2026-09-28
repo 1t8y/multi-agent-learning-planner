@@ -32,7 +32,7 @@ if FASTAPI_AVAILABLE:
         init_orchestrator()
         yield
 
-    app = FastAPI(title="学习规划助手API", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="学习规划助手API", version="2.3.0", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,

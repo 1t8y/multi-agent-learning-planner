@@ -30,10 +30,16 @@ class ConfigManager:
     def _load_env(self):
         """加载环境变量"""
         project_root = self._get_project_root()
-        env_path = os.path.join(project_root, ".env")
-        
-        if os.path.exists(env_path):
-            load_dotenv(env_path)
+        code_root = os.path.dirname(os.path.abspath(__file__))
+        env_paths = [
+            os.path.join(code_root, ".env"),
+            os.path.join(project_root, ".env")
+        ]
+
+        for env_path in env_paths:
+            if os.path.exists(env_path):
+                load_dotenv(env_path)
+                break
         
         self._config['env'] = {
             'deepseek_api_key': os.getenv('DEEPSEEK_API_KEY', ''),
@@ -55,6 +61,11 @@ class ConfigManager:
                 'similarity_threshold': float(os.getenv('RAG_SIMILARITY_THRESHOLD', '0.5')),
                 'min_kb_similarity': float(os.getenv('RAG_MIN_KB_SIMILARITY', '0.15')),
                 'max_rewrite_times': int(os.getenv('RAG_MAX_REWRITE_TIMES', '2')),
+                'candidate_k': int(os.getenv('RAG_CANDIDATE_K', '10')),
+                'top_k': int(os.getenv('RAG_TOP_K', '5')),
+                'rerank_enabled': os.getenv('RAG_RERANK_ENABLED', 'true').lower() == 'true',
+                'rerank_model': os.getenv('RAG_RERANK_MODEL', 'BAAI/bge-reranker-base'),
+                'quality_threshold': float(os.getenv('RAG_QUALITY_THRESHOLD', '0.55')),
                 'regeneration_threshold': float(os.getenv('REGENERATION_THRESHOLD', '6.0')),
                 'max_regeneration_rounds': int(os.getenv('MAX_REGENERATION_ROUNDS', '3')),
             }

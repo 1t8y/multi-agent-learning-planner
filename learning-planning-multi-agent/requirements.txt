@@ -3,12 +3,15 @@
 
 python-dotenv==1.2.1
 requests==2.33.0
+fastapi==0.136.3
+uvicorn==0.48.0
+pydantic==2.12.5
 
 # Vector database
 chromadb==1.5.9
 
 # Agent workflow
-langgraph==1.2.2
+langgraph==1.2.12
 
 # Embedding model
 sentence-transformers==5.5.1
