@@ -1,6 +1,21 @@
-# RAGAS isolated evaluation environment
-# Install with: .\.venv\Scripts\python.exe -m pip install -r requirements-ragas.txt
+# RAGAS 评测环境（独立、自包含，不要与 requirements.txt 混装）
+#
+#   python -m venv .venv-ragas
+#   .\.venv-ragas\Scripts\python.exe -m pip install -r requirements-ragas.txt
+#
+# 为什么不能和 requirements.txt 一起装：
+#   langgraph 1.2.12   → langchain-core>=1.4.7,<2
+#   langchain 0.3.30   → langchain-core>=0.3.85,<1.0.0
+# 两者对 langchain-core 的要求互斥。ragas 0.4.3 本身对 langchain 系列没有版本上限，
+# 上限来自它依赖的 langchain 0.3.x 伞包——所以"装 langgraph 会搞坏评测环境"是成立的，
+# 只是被破坏的不是 ragas，而是 langchain 0.3.x 的声明一致性。
+#
+# 评测脚本（evaluate_ragas.py）只 import 检索链路（vector_store），不需要 fastapi / langgraph，
+# 因此这里装的是「评测所需的运行子集 + ragas 栈」，与 .venv-run 完全分开。
+#
+# 本文件经 `pip install --dry-run` 解析通过（core 0.3.86 组合无冲突）。
 
+# 检索链路所需（评测要建 Chroma、跑 BGE + BM25）
 python-dotenv==1.2.1
 requests==2.33.0
 chromadb==1.5.9
@@ -9,6 +24,7 @@ scikit-learn==1.5.1
 rank-bm25==0.2.2
 jieba==0.42.1
 
+# RAGAS 栈（版本互锁，改动需整组重测）
 ragas==0.4.3
 datasets==4.8.5
 langchain==0.3.30

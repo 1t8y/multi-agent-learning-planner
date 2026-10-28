@@ -9,7 +9,6 @@
 - 性能监控与指标收集
 """
 
-import os
 import json
 import re
 import time
@@ -108,53 +107,13 @@ class BaseAgent(ABC):
     
     def _load_system_prompt(self) -> str:
         """
-        加载系统提示词
-        
-        优先从配置的prompt文件加载，如果不存在则使用默认提示词
+        返回子类实现的默认系统提示词
+
+        提示词只保留在代码里的 `_get_default_prompt`：仓库不附带外置提示词文件，
+        原先"优先读文件、读不到再回退"的那段逻辑指向的路径并不存在，已删除。
         """
-        prompt_path = self._get_prompt_path()
-        
-        if prompt_path and os.path.exists(prompt_path):
-            try:
-                with open(prompt_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    return self._parse_markdown_prompt(content)
-            except Exception as e:
-                print(f"[{self.__class__.__name__}] 加载提示词文件失败: {e}")
-        
         return self._get_default_prompt()
-    
-    def _parse_markdown_prompt(self, content: str) -> str:
-        """
-        解析Markdown格式的提示词
-        
-        提取Markdown文件中---分隔符后的内容作为提示词
-        """
-        lines = content.split('\n')
-        start_idx = 0
-        end_idx = 0
-        
-        for i, line in enumerate(lines):
-            if line.startswith('---') and start_idx == 0:
-                start_idx = i
-            elif line.startswith('---') and start_idx > 0:
-                end_idx = i
-                break
-        
-        if end_idx > start_idx:
-            return '\n'.join(lines[end_idx+1:]).strip()
-        
-        return content.strip()
-    
-    @abstractmethod
-    def _get_prompt_path(self) -> Optional[str]:
-        """
-        获取提示词文件路径
-        
-        子类必须实现此方法，返回提示词文件的绝对路径
-        """
-        pass
-    
+
     @abstractmethod
     def _get_default_prompt(self) -> str:
         """

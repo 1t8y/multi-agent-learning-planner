@@ -8,7 +8,6 @@
 - 确保数据格式符合规范
 """
 
-import os
 import json
 import re
 from typing import Optional, Dict
@@ -28,12 +27,22 @@ class RequirementExtractorAgent(BaseAgent):
     """
     
     AGENT_NAME = "requirement-extractor"
-    PROMPT_FILE = "requirement-extractor-agent.md"
     
     # 有效取值集合
     VALID_FOUNDATIONS = {"零基础", "初级", "中级", None}
     VALID_PREFERENCES = {"视频", "文字", "实操", None}
     VALID_TIME_EXPECTATIONS = {"快速入门", "短期学习", "标准学习", "长期学习", None}
+
+    # 用户未提及某项时的推断默认值。
+    # 只在识别到学习目标（learning_objective 非空）时生效——非学习类输入仍返回全 None，
+    # 不给「今天天气怎么样」这种输入编造学习需求。
+    # 取值刻意保守：零基础、每天 1 小时、看视频，避免替用户承诺更多时间或更高起点。
+    DEFAULT_REQUIREMENTS = {
+        "current_foundation": "零基础",
+        "daily_available_time": "1小时",
+        "learning_preference": "视频",
+        "time_expectation": "长期学习",
+    }
     
     def __init__(self, agent_config: Optional[Dict] = None):
         """
@@ -43,11 +52,6 @@ class RequirementExtractorAgent(BaseAgent):
             agent_config: Agent特定配置
         """
         super().__init__(agent_config)
-    
-    def _get_prompt_path(self) -> Optional[str]:
-        """获取提示词文件路径"""
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(project_root, ".trae", "agents", self.PROMPT_FILE)
     
     def _get_default_prompt(self) -> str:
         """获取默认系统提示词"""
@@ -67,11 +71,18 @@ class RequirementExtractorAgent(BaseAgent):
    - null（未提及）
 
 ## 时间期望判断规则
-- 包含"1周内"、"一周内"、"几天"、"快速"、"速成"、"入门"等关键词 → "快速入门"
-- 包含"2周"、"3周"、"几周"、"1个月"、"一个月"、"1月"、"短期"等关键词 → "短期学习"
+- 包含"1周内"、"一周内"、"几天"、"快速"、"速成"、"尽快"、"马上"、"越快越好"等关键词 → "快速入门"
+- 包含"2周"、"3周"、"几周"、"1个月"、"一个月"、"1月"、"短期"、"本月内"等关键词 → "短期学习"
 - 包含"2个月"、"3个月"、"2-3个月"、"两三个月"、"几个月"、"数月"等关键词 → "标准学习"
-- 包含"4个月"、"5个月"、"半年"、"6个月"、"长期"、"系统"、"精通"、"一年"等关键词 → "长期学习"
-- 未提及时间要求 → null
+- 包含"4个月"、"5个月"、"半年"、"6个月"、"长期"、"系统"、"精通"、"一年"、"一学期"、"本学期"等关键词 → "长期学习"
+- **未提及时间要求 → 必须填 "长期学习"（默认按长期系统学习规划），禁止返回 null**
+
+## 其余字段的默认值（用户未提及时的推断）
+- current_foundation 未提及 → "零基础"（按最保守的起点规划）
+- daily_available_time 未提及 → "1小时"
+- learning_preference 未提及 → "视频"
+
+只有当输入确实包含学习意图时才做上述推断；非学习类输入仍返回全 null。
 
 ## 强制约束
 1. 必须输出**纯标准JSON**，无任何多余文字、解释、标点、注释
@@ -95,7 +106,8 @@ class RequirementExtractorAgent(BaseAgent):
             "current_foundation": None,
             "daily_available_time": None,
             "learning_preference": None,
-            "time_expectation": None
+            "time_expectation": None,
+            "_inferred_fields": []
         }
     
     def _extract_json(self, response_text: str) -> Optional[str]:
@@ -149,7 +161,13 @@ class RequirementExtractorAgent(BaseAgent):
             提取结果
         """
         # ── 提取学习目标（通用模式） ──
-        learning_objective = self._extract_learning_objective(user_input)
+        # 先判断是不是学习类输入：回退策略会把整句当目标，若不设闸门，
+        # 「今天天气怎么样」也会得到一个“学习目标”，进而被补上默认需求。
+        learning_objective = (
+            self._extract_learning_objective(user_input)
+            if self._has_learning_intent(user_input)
+            else None
+        )
 
         # ── 提取现有基础 ──
         current_foundation = None
@@ -201,6 +219,19 @@ class RequirementExtractorAgent(BaseAgent):
             "time_expectation": time_expectation
         }
 
+    def _has_learning_intent(self, user_input: str) -> bool:
+        """
+        判断输入是否表达了学习意图
+
+        关键词提取的最后一步是"把整句清理一下当学习目标"，这条回退对任何文本都成立，
+        所以需要先确认输入里有学习信号，否则「今天天气怎么样」也会被当成学习需求。
+        """
+        intent_keywords = [
+            "学", "备考", "考研", "入门", "掌握", "精通", "教程", "课程",
+            "练习", "练手", "刷题", "看课", "听讲", "上手", "实战", "转",
+        ]
+        return any(kw in user_input for kw in intent_keywords)
+
     def _extract_learning_objective(self, user_input: str) -> Optional[str]:
         """
         用通用方法从用户输入中提取学习目标
@@ -211,19 +242,20 @@ class RequirementExtractorAgent(BaseAgent):
         3. 回退：移除修饰词后的核心文本
         """
         # 策略1：匹配「动词 + 修饰 + 目标内容」模式
+        # 动词必须落在子句开头（句首或标点/代词之后），否则「数学」里的「学」、
+        # 「每天能学2小时」里的「学」都会被误当成目标起点。
+        clause_start = r"(?:^|[，。、；：,.\s]|我|你|他|她|想|要)"
         verb_patterns = [
             # 匹配"想学/学习/要学/想学习/想要学习 ... 某领域" 贪婪到句子核心
-            r"(?:想学[习]?|要学[习]?|学[习]?|准备学[习]?|打算学[习]?|希望学[习]?)\s*(.{2,60}?)(?:的[^，。]*)?(?:，|。|$|最好|希望|每天|喜欢|我是|我想|我要)",
-            r"(?:备考|考)(.{2,40}?)(?:，|。|$|最好|希望|每天)",
-            r"(?:准备|打算|计划|希望|想要)\s*(.{2,60}?)(?:，|。|$|最好|希望|每天)",
+            clause_start + r"(?:想学[习]?|要学[习]?|学[习]?|准备学[习]?|打算学[习]?|希望学[习]?)\s*(.{2,60}?)(?:的[^，。]*)?(?:，|。|$|最好|希望|每天|喜欢|我是|我想|我要)",
+            clause_start + r"(?:备考|考)(.{2,40}?)(?:，|。|$|最好|希望|每天)",
+            clause_start + r"(?:准备|打算|计划|希望|想要)\s*(.{2,60}?)(?:，|。|$|最好|希望|每天)",
         ]
         for pattern in verb_patterns:
             match = re.search(pattern, user_input)
             if match:
-                obj = match.group(1).strip()
-                # 去掉开头的"的"
-                obj = re.sub(r"^的\s*", "", obj)
-                if len(obj) >= 2 and not obj.startswith("的"):
+                obj = self._clean_objective(match.group(1))
+                if obj:
                     return obj
 
         # 策略2：直接用"学习"或"学"定位，截取到句末
@@ -234,43 +266,133 @@ class RequirementExtractorAgent(BaseAgent):
             obj = re.sub(r"[\s，,]*最好.*$", "", obj)
             obj = re.sub(r"[\s，,]*希望.*$", "", obj)
             obj = re.sub(r"[\s，,]*每天.*$", "", obj)
-            if len(obj) >= 2:
+            obj = self._clean_objective(obj)
+            if obj:
                 return obj
 
-        # 策略3：回退 - 移除明确修饰词后的剩余文本作为学习目标
+        # 策略3：回退 —— 优先取「想/要/计划/准备」之后的那一小句，再剥离修饰词
+        tail = re.split(r"想要|想|打算|计划|准备", user_input)[-1] if re.search(r"想要|想|打算|计划|准备", user_input) else user_input
         modifiers = [
             "每天", "每周", "小时", "分钟", "视频", "文字", "实操",
             "零基础", "初级", "中级", "希望", "想在", "我是", "我想", "我要",
             "最好有", "喜欢", "快速", "短期", "长期", "三个月", "一个月",
             "一周", "半年", "一年", "几天", "几周", "几个月",
         ]
-        cleaned = user_input
+        cleaned = tail
         for m in modifiers:
             cleaned = cleaned.replace(m, "")
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        cleaned = re.sub(r"^[的，,。.]|[的，,。.]$", "", cleaned)
 
-        return cleaned if len(cleaned) >= 2 else None
+        return self._clean_objective(cleaned)
+
+    def _clean_objective(self, obj: str) -> Optional[str]:
+        """
+        清理学习目标字符串，返回 None 表示这段内容不能当目标
+
+        处理三类脏结果：
+        1. 首尾标点与「的」
+        2. 纯时间/数量片段（如「2小时」「，每天3小时」）——那是时间字段的内容，不是目标
+        3. 删掉时间片之后只剩标点的残留
+        """
+        obj = obj.strip().strip("，,。.、；;：: 的")
+        # 纯时间/数量：段内没有其他实质内容
+        if re.fullmatch(r"[\d\s\.]+(个)?(小时|分钟|个月|月|周|天|h|min)?", obj):
+            return None
+        # 剥离开头的时间/频率片（「三个月内」「一个月内」「每天1小时」「一学期」）
+        obj = re.sub(
+            r"^(?:每[天周月日]|每天|每周|每月)?\s*[一二三四五六七八九十两半\d]+\s*(?:个)?"
+            r"(?:小时|分钟|月|周|天|年|学期)?\s*(?:内|里|左右|之内)?[，,、\s]*",
+            "", obj,
+        )
+        obj = re.sub(r"^[，,。.、；;：:\s]+", "", obj)
+        # 剥离开头的意向助词与时间片段残留（「想用视频学 Python」→「用视频学 Python」，「内转 Go」→「转 Go」）
+        obj = re.sub(r"^(?:想要|想|打算|计划|准备|要|内|里)", "", obj)
+        # 剥离开头的动词壳（「会 Docker」「学会 Docker」「精通 C++」）
+        obj = re.sub(r"^(?:学会|学好|会|掌握|精通|入门|转)(?=[\sA-Za-z\u4e00-\u9fff])", "", obj)
+        # 砍掉句中残留的「，1小时」这类尾巴
+        obj = re.sub(r"[，,]\s*\d.*$", "", obj)
+        obj = obj.strip("，,。.、；;：: 的")
+        if len(obj) < 2:
+            return None
+        # 只剩时间词/空壳动词的也不算目标
+        if re.fullmatch(r"(快|慢|短|长|入)?(速成|入门|学习|系统学习)?", obj):
+            return None
+        return obj
 
     def _extract_time_expectation(self, user_input: str) -> Optional[str]:
-        """提取时间期望"""
+        """提取时间期望，未提及返回 None（由 _apply_defaults 统一补默认值）"""
         # 快速入门（1周内）
-        if any(kw in user_input for kw in ["1周内", "一周内", "几天内", "快速", "速成", "7天", "一周搞定", "几天搞定", "1周", "一星期"]):
+        if any(kw in user_input for kw in [
+            "1周内", "一周内", "几天内", "快速", "速成", "7天", "一周搞定", "几天搞定",
+            "1周", "一星期", "尽快", "马上", "越快越好", "突击",
+        ]):
             return "快速入门"
 
         # 短期学习（1-4周）
-        if any(kw in user_input for kw in ["2周", "3周", "4周", "几周", "1个月内", "一个月内", "1月", "短期", "一个月", "一个半月", "1个月", "几星期"]):
+        if any(kw in user_input for kw in [
+            "2周", "3周", "4周", "几周", "1个月内", "一个月内", "1月", "短期",
+            "一个月", "一个半月", "1个月", "几星期", "本月内", "这个月内",
+        ]):
             return "短期学习"
 
         # 标准学习（1-3个月）
-        if any(kw in user_input for kw in ["2个月", "3个月", "2-3个月", "两三个月", "三个月", "几个月", "数月", "两个月", "两月", "三两个月"]):
+        if any(kw in user_input for kw in [
+            "2个月", "3个月", "2-3个月", "两三个月", "三个月", "几个月", "数月",
+            "两个月", "两月", "三两个月",
+        ]):
             return "标准学习"
 
         # 长期学习（3个月以上）
-        if any(kw in user_input for kw in ["4个月", "5个月", "半年", "6个月", "长期", "系统", "精通", "一年", "半年以上", "几年"]):
+        if any(kw in user_input for kw in [
+            "4个月", "5个月", "半年", "6个月", "长期", "系统", "精通", "一年",
+            "半年以上", "几年", "学期", "慢慢学", "持续学",
+        ]):
             return "长期学习"
 
         return None
+
+    # 原句残片的标志词：人称、意向、偏好、频率——出现在目标串里说明关键词回退抓歪了
+    RAW_CLAUSE_MARKERS = ("我是", "我想", "我要", "希望", "喜欢", "打算", "准备", "每天", "每周", "每天能")
+
+    def _looks_like_raw_clause(self, value: Optional[str]) -> bool:
+        """
+        判断关键词抓到的学习目标是不是「原句残片」
+
+        典型残片：「5小时，想系统学概率论与数理统计，为后面学机器学习打底，喜欢看文字资料」
+        —— 开头是时间量、里面混着人称和偏好，这种结果宁可用 LLM 的，也不要以长为由覆盖掉。
+        """
+        text = (value or "").strip()
+        if not text:
+            return True
+        if text[0].isdigit() or text[0] in "一二三四五六七八九十半个每":
+            return True
+        if text[0] in "，,。.、；;：:":
+            return True
+        return any(marker in text for marker in self.RAW_CLAUSE_MARKERS)
+
+    def _apply_defaults(self, result: Dict) -> Dict:
+        """
+        为未提及的字段补推断默认值，并记录哪些字段是推断出来的
+
+        只在 learning_objective 非空时生效：没有学习目标说明输入不是学习需求，
+        此时应保持全 None（与提示词里"非学习类输入返回全 null"一致），
+        不要凭空补出一份"零基础/1小时/视频/长期"的需求。
+
+        `_inferred_fields` 只记录「本方法补的」字段，不包含 LLM 自己推断的值：
+        LLM 按新提示词通常已填满五字段，此时这里是空列表；
+        只有 LLM 漏字段、或整体失败走关键词回退时，才会补上并记录。
+        """
+        if not result.get("learning_objective"):
+            result["_inferred_fields"] = []
+            return result
+
+        inferred = []
+        for key, default in self.DEFAULT_REQUIREMENTS.items():
+            if result.get(key) is None:
+                result[key] = default
+                inferred.append(key)
+        result["_inferred_fields"] = inferred
+        return result
 
     def _validate_and_clean(self, data: Dict) -> Dict:
         """
@@ -360,25 +482,26 @@ class RequirementExtractorAgent(BaseAgent):
             keyword_result = self._extract_by_keywords(input_text)
             print(f"[{self.AGENT_NAME}] 关键词提取: {json.dumps(keyword_result, ensure_ascii=False)}")
 
-            # 步骤3：合并 —— 智能选择，对 learning_objective 优先用更完整的一方
+            # 步骤3：合并 —— LLM 为主，关键词只在 LLM 缺失或明显抓歪时兜底
             final_result = {}
             for key in ["learning_objective", "current_foundation", "daily_available_time", "learning_preference", "time_expectation"]:
                 llm_val = api_result.get(key) if api_result else None
                 kw_val = keyword_result.get(key)
 
                 if key == "learning_objective":
-                    # 智能选择：取更长/更具体的那个
-                    # 关键词提取保留了更多上下文（如"前端开发"、"Java开发"），LLM有时会截断
-                    llm_len = len(llm_val) if llm_val else 0
-                    kw_len = len(kw_val) if kw_val else 0
-                    if kw_val and llm_val:
-                        # 如果关键词结果包含了LLM结果，用更完整的关键词
+                    if llm_val and (not kw_val or self._looks_like_raw_clause(kw_val)):
+                        # 关键词抓到的是原句残片（带人称/时间/偏好修饰），LLM 的结果更可信
+                        final_result[key] = llm_val
+                    elif kw_val and llm_val:
+                        # 关键词保留了更多上下文（如"前端开发""Java开发"），LLM 有时会截断：
+                        # 只有在「完整包含且更具体」时才采用关键词结果
+                        llm_len = len(llm_val)
+                        kw_len = len(kw_val)
                         if llm_val in kw_val and kw_len >= llm_len:
                             final_result[key] = kw_val
                         elif kw_val in llm_val and llm_len >= kw_len:
                             final_result[key] = llm_val
                         else:
-                            # 都不包含对方，取更长的那个（更具体）
                             final_result[key] = kw_val if kw_len >= llm_len else llm_val
                     else:
                         final_result[key] = llm_val or kw_val
@@ -386,6 +509,9 @@ class RequirementExtractorAgent(BaseAgent):
                     # 其他字段：LLM 优先，关键词填补空缺
                     final_result[key] = llm_val if llm_val is not None else kw_val
             
+            # 步骤4：补齐未提及字段的默认值（五字段不留 null）
+            final_result = self._apply_defaults(final_result)
+
             print(f"[{self.AGENT_NAME}] 最终提取: {json.dumps(final_result, ensure_ascii=False)}")
             
             return final_result
@@ -395,7 +521,7 @@ class RequirementExtractorAgent(BaseAgent):
             raise
         except Exception as e:
             print(f"[{self.AGENT_NAME}] 提取过程发生未知错误，使用关键词提取: {e}")
-            return self._extract_by_keywords(input_text)
+            return self._apply_defaults(self._extract_by_keywords(input_text))
     
     def process(self, user_input: str) -> Dict:
         """

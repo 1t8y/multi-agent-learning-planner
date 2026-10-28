@@ -240,32 +240,6 @@ class HermesSyncClient:
         success, stdout, stderr = self._run_cli_command(f'{cli_path} --version')
         return success
     
-    def get_agent_task_id(self, agent_name: str) -> Optional[str]:
-        """
-        从 Agent 配置文件获取 Hermes 任务 ID
-        
-        Args:
-            agent_name: Agent名称（如 requirement-extractor-agent）
-        
-        Returns:
-            任务ID或None
-        """
-        agent_md_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            '.trae',
-            'agents',
-            f'{agent_name}.md'
-        )
-        
-        if os.path.exists(agent_md_path):
-            with open(agent_md_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                import re
-                match = re.search(r'hermes_task_id:\s*["\']([^"\']+)["\']', content)
-                if match:
-                    return match.group(1)
-        return None
-    
     def list_kanban_tasks(self) -> Optional[str]:
         """
         列出 Kanban 任务

@@ -8,7 +8,6 @@
 - 输出结构化的学习路径
 """
 
-import os
 import json
 import re
 from typing import Optional, Dict
@@ -34,7 +33,6 @@ class CoursePlannerAgent(BaseAgent):
     """
     
     AGENT_NAME = "course-planner"
-    PROMPT_FILE = "course-planner-agent.md"
     
     def __init__(self, agent_config: Optional[Dict] = None):
         """
@@ -44,11 +42,6 @@ class CoursePlannerAgent(BaseAgent):
             agent_config: Agent特定配置
         """
         super().__init__(agent_config)
-    
-    def _get_prompt_path(self) -> Optional[str]:
-        """获取提示词文件路径"""
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(project_root, ".trae", "agents", self.PROMPT_FILE)
     
     def _get_default_prompt(self) -> str:
         """获取默认系统提示词"""

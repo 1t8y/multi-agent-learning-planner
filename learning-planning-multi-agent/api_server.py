@@ -32,7 +32,7 @@ if FASTAPI_AVAILABLE:
         init_orchestrator()
         yield
 
-    app = FastAPI(title="学习规划助手API", version="2.3.0", lifespan=lifespan)
+    app = FastAPI(title="学习规划助手API", version="2.6.4", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -58,6 +58,13 @@ if FASTAPI_AVAILABLE:
         resource_type: str
         field: str
         tags: list = []
+        level: str = "intermediate"
+
+    # 知识库只识别这三类领域（_detect_field 的实现限制），写别的领域资源永远检索不到；
+    # 资源类型同样受限于检索与前端图标映射
+    ALLOWED_RESOURCE_TYPES = {"视频教程", "文字教程", "实战项目", "文档资料"}
+    ALLOWED_FIELDS = {"AI", "编程", "数学"}
+    ALLOWED_LEVELS = {"beginner", "intermediate", "advanced"}
 
     class PlanRequest(BaseModel):
         userInput: str
@@ -150,32 +157,59 @@ if FASTAPI_AVAILABLE:
             
             if result:
                 return {"success": True, "feedback_id": result.id}
-            else:
-                raise HTTPException(status_code=400, detail="反馈提交失败")
+            raise HTTPException(status_code=400, detail="反馈提交失败")
+        except HTTPException:
+            # 上面的 400 不能被下面的兜底吞成 500
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
     
     @app.post("/api/resources/submit")
     async def submit_resource(submission: ResourceSubmissionData):
-        """提交新资源"""
+        """提交新资源，进入待审核队列"""
         if not feedback_manager:
             raise HTTPException(status_code=500, detail="反馈系统未初始化")
-        
+
+        title = (submission.title or "").strip()
+        url = (submission.url or "").strip()
+        if not title or not url:
+            raise HTTPException(status_code=400, detail="标题和 URL 不能为空")
+        if not url.lower().startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="URL 必须以 http:// 或 https:// 开头")
+        if submission.resource_type not in ALLOWED_RESOURCE_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"资源类型必须是 {'/'.join(sorted(ALLOWED_RESOURCE_TYPES))} 之一",
+            )
+        if submission.field not in ALLOWED_FIELDS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"领域必须是 {'/'.join(sorted(ALLOWED_FIELDS))} 之一",
+            )
+        if submission.level not in ALLOWED_LEVELS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"难度必须是 {'/'.join(sorted(ALLOWED_LEVELS))} 之一",
+            )
+
         try:
             result = feedback_manager.submit_resource(
-                title=submission.title,
-                description=submission.description,
-                url=submission.url,
+                title=title,
+                description=(submission.description or "").strip(),
+                url=url,
                 resource_type=submission.resource_type,
                 field=submission.field,
-                tags=submission.tags
+                tags=[str(tag).strip() for tag in (submission.tags or []) if str(tag).strip()],
+                level=submission.level,
             )
-            
+
             if result:
-                return {"success": True, "submission_id": result.id}
-            else:
-                raise HTTPException(status_code=400, detail="资源提交失败")
+                return {"success": True, "submission_id": result.id, "status": result.status}
+            raise HTTPException(status_code=400, detail="资源提交失败")
+        except HTTPException:
+            # 上面的 400 不能被下面的兜底吞成 500
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
@@ -202,6 +236,86 @@ if FASTAPI_AVAILABLE:
         
         return feedback_manager.get_pending_submissions()
 
+    @app.get("/api/resources/{resource_id}/stats")
+    async def get_resource_stats(resource_id: str):
+        """
+        获取单个资源的评分与反馈数。
+
+        反馈提交成功后前端用它回填该资源的评分展示；页面刷新后也可以直接查。
+        """
+        if not rag_recommender or not rag_recommender.vector_store:
+            raise HTTPException(status_code=503, detail="向量库未初始化")
+
+        stats = rag_recommender.vector_store.get_resource_stats(resource_id)
+        if not stats:
+            raise HTTPException(status_code=404, detail=f"资源不存在: {resource_id}")
+        return stats
+
+    @app.get("/api/health")
+    async def health():
+        """
+        健康检查：同时暴露知识库规模、检索缓存命中率和模型加载状态。
+
+        预热是否完成、模型是否只加载了一份，都可以在这里直接看到，
+        排查"冷启动慢"和"检索变慢"时不用再翻进程日志。
+        """
+        from model_loader import get_loader_stats
+        from vector_store import get_cache_stats
+
+        payload = {
+            "status": "ok",
+            "version": app.version,
+            "vector_store_ready": bool(rag_recommender and rag_recommender.vector_store),
+            "models": get_loader_stats(),
+            "caches": get_cache_stats(),
+        }
+        if rag_recommender and rag_recommender.vector_store:
+            store_stats = rag_recommender.vector_store.get_stats()
+            payload["knowledge_base"] = {
+                "total_count": store_stats.get("total_count", 0),
+                "fields": store_stats.get("fields", {}),
+                "levels": store_stats.get("levels", {}),
+            }
+            payload["retrieval"] = store_stats.get("retrieval", {})
+        return payload
+
+
+DEFAULT_API_PORT = 8001
+
+
+def load_env_file() -> None:
+    """尽力加载同目录 .env，让 API_PORT 等配置可以直接写在 .env 里"""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.exists(env_path):
+        load_dotenv(env_path, override=False)
+
+
+def resolve_api_port() -> int:
+    """
+    输入环境变量 API_PORT，返回后端监听端口。
+
+    默认 8001 而不是 8000：本机 8000 常被 Docker 等服务占用，
+    打到别的服务上只会返回看不懂的 404，排查成本很高。
+    """
+    raw = (os.getenv("API_PORT") or "").strip()
+    if not raw:
+        return DEFAULT_API_PORT
+
+    try:
+        port = int(raw)
+    except ValueError:
+        print(f"[api_server] API_PORT={raw!r} 不是整数，回退到 {DEFAULT_API_PORT}")
+        return DEFAULT_API_PORT
+
+    if not 1 <= port <= 65535:
+        print(f"[api_server] API_PORT={port} 超出范围，回退到 {DEFAULT_API_PORT}")
+        return DEFAULT_API_PORT
+    return port
+
 
 if __name__ == "__main__":
     if not FASTAPI_AVAILABLE:
@@ -209,11 +323,13 @@ if __name__ == "__main__":
         exit(1)
     
     import uvicorn
+    load_env_file()
+    port = resolve_api_port()
     print("=" * 60)
     print("学习规划助手API服务")
     print("=" * 60)
-    print("\n启动服务: http://localhost:8000")
-    print("API文档: http://localhost:8000/docs")
+    print(f"\n启动服务: http://localhost:{port}")
+    print(f"API文档: http://localhost:{port}/docs")
     print("=" * 60 + "\n")
     
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=port)

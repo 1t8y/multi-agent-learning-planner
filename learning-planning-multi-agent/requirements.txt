@@ -26,3 +26,6 @@ aiohttp==3.13.5
 # Chinese tokenization
 rank_bm25==0.2.2
 jieba==0.42.1
+
+# Test runner（README 的 pytest 命令、CI 的快速套件都依赖它；缺了装完环境就跑不了测试）
+pytest==9.1.1

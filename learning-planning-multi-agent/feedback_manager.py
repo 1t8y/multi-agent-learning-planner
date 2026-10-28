@@ -81,22 +81,30 @@ class FeedbackManager:
     负责收集、验证、处理用户反馈
     """
     
-    FEEDBACK_FILE = "./data/feedback_records.json"
-    SUBMISSION_FILE = "./data/resource_submissions.json"
+    # 默认写入 ./data，可通过 FEEDBACK_DATA_DIR 或构造参数替换（测试用临时目录）
+    DATA_DIR = os.getenv("FEEDBACK_DATA_DIR", "./data")
+    FEEDBACK_FILE = os.path.join(DATA_DIR, "feedback_records.json")
+    SUBMISSION_FILE = os.path.join(DATA_DIR, "resource_submissions.json")
     
     MIN_USEFUL_COUNT = 2
     MIN_RATING_FOR_APPROVAL = 4
     
-    def __init__(self, vector_store=None):
+    def __init__(self, vector_store=None, data_dir: Optional[str] = None):
         """
         初始化反馈管理器
         
         Args:
             vector_store: 向量数据库实例
+            data_dir: 反馈数据存放目录，默认 ./data；测试可传临时目录避免污染生产数据
         """
         self.vector_store = vector_store
         self.feedback_records: List[UserFeedback] = []
         self.submissions: List[ResourceSubmission] = []
+        
+        if data_dir:
+            self.DATA_DIR = data_dir
+            self.FEEDBACK_FILE = os.path.join(data_dir, "feedback_records.json")
+            self.SUBMISSION_FILE = os.path.join(data_dir, "resource_submissions.json")
         
         self._ensure_data_dir()
         self._load_records()
@@ -105,7 +113,7 @@ class FeedbackManager:
     
     def _ensure_data_dir(self):
         """确保数据目录存在"""
-        os.makedirs("./data", exist_ok=True)
+        os.makedirs(self.DATA_DIR, exist_ok=True)
     
     def _load_records(self):
         """加载历史记录"""
@@ -220,6 +228,7 @@ class FeedbackManager:
                         resource_type: str,
                         field: str,
                         tags: List[str],
+                        level: str = "intermediate",
                         submitted_by: str = "anonymous") -> Optional[ResourceSubmission]:
         """
         提交新资源到待审核队列
@@ -231,6 +240,7 @@ class FeedbackManager:
             resource_type: 资源类型
             field: 领域
             tags: 标签列表
+            level: 难度等级（beginner/intermediate/advanced），影响入库后能否被难度过滤命中
             submitted_by: 提交者
             
         Returns:
@@ -247,7 +257,7 @@ class FeedbackManager:
             url=url,
             resource_type=resource_type,
             field=field,
-            level="intermediate",
+            level=level if level in {"beginner", "intermediate", "advanced"} else "intermediate",
             tags=tags,
             rating=0,
             submitted_by=submitted_by,
@@ -365,9 +375,9 @@ class FeedbackManager:
         return True
 
 
-def init_feedback_manager(vector_store=None) -> FeedbackManager:
-    """初始化反馈管理器"""
-    return FeedbackManager(vector_store=vector_store)
+def init_feedback_manager(vector_store=None, data_dir: Optional[str] = None) -> FeedbackManager:
+    """初始化反馈管理器，data_dir 为空时使用默认 ./data"""
+    return FeedbackManager(vector_store=vector_store, data_dir=data_dir)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,6 @@
 - 用户反馈收集和资源入库
 """
 
-import os
 import json
 from typing import Optional, Dict
 from base_agent import BaseAgent
@@ -37,7 +36,6 @@ class ResourceRecommenderAgent(BaseAgent):
     """
     
     AGENT_NAME = "resource-recommender"
-    PROMPT_FILE = "resource-recommender-agent.md"
     
     RESOURCE_TYPES = ["视频教程", "文字教程", "实战项目", "文档资料"]
     
@@ -58,10 +56,6 @@ class ResourceRecommenderAgent(BaseAgent):
                 print(f"[{self.AGENT_NAME}] Self-RAG功能已启用")
             except Exception as e:
                 print(f"[{self.AGENT_NAME}] RAG初始化失败: {e}")
-    
-    def _get_prompt_path(self) -> Optional[str]:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(project_root, ".trae", "agents", self.PROMPT_FILE)
     
     def _get_default_prompt(self) -> str:
         return """你是专业学习资源推荐专家，根据学习需求和学习计划推荐最合适的学习资源。

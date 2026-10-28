@@ -8,7 +8,6 @@
 - 生成调整建议和优化方案
 """
 
-import os
 import json
 from typing import Optional, Dict, Any
 from base_agent import BaseAgent
@@ -30,7 +29,6 @@ class AssessmentFeedbackAgent(BaseAgent):
     """
     
     AGENT_NAME = "assessment-feedback"
-    PROMPT_FILE = "assessment-feedback-agent.md"
     
     def __init__(self, agent_config: Optional[Dict] = None):
         """
@@ -40,12 +38,7 @@ class AssessmentFeedbackAgent(BaseAgent):
             agent_config: Agent特定配置
         """
         super().__init__(agent_config)
-    
-    def _get_prompt_path(self) -> Optional[str]:
-        """获取提示词文件路径"""
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(project_root, ".trae", "agents", self.PROMPT_FILE)
-    
+        
     def _get_default_prompt(self) -> str:
         """获取默认系统提示词"""
         return """你是专业**学习效果评估师**，对学习计划进行全面多维度评估，制定科学的评估方法，并提供针对性的调整建议。
