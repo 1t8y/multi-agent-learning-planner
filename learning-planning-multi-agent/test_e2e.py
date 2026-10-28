@@ -7,9 +7,21 @@
 import os
 import sys
 import json
+import tempfile
 from dotenv import load_dotenv
 
 load_dotenv('.env')
+
+_TEMP_FEEDBACK_DIR = None
+
+
+def _temp_feedback_dir() -> str:
+    """返回本次测试专用的临时反馈目录，避免写入真实数据文件"""
+    global _TEMP_FEEDBACK_DIR
+    if _TEMP_FEEDBACK_DIR is None:
+        _TEMP_FEEDBACK_DIR = tempfile.mkdtemp(prefix="e2e_feedback_")
+        print(f"[INFO] 测试反馈写入临时目录: {_TEMP_FEEDBACK_DIR}")
+    return _TEMP_FEEDBACK_DIR
 
 def test_agentic_rag():
     """测试Agentic RAG完整流程"""
@@ -85,8 +97,10 @@ def test_feedback_integration():
     
     try:
         recommender = init_self_rag()
+        # 写入临时目录，避免把测试反馈和测试提交混进真实数据
         fm = init_feedback_manager(
-            vector_store=recommender.vector_store if hasattr(recommender, 'vector_store') else None
+            vector_store=recommender.vector_store if hasattr(recommender, 'vector_store') else None,
+            data_dir=_temp_feedback_dir(),
         )
         print("[OK] 反馈系统初始化成功")
     except Exception as e:

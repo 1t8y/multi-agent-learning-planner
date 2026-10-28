@@ -1,18 +1,65 @@
-name: Run Tests
-on: [push, pull_request]
+# 文件：.github/workflows/test.yml
+# 功能：CI —— 数据校验、快速单测、前端构建
+# 说明：需要 Embedding / Cross-Encoder 的集成测试（-m slow）不在 CI 跑，
+#       因为 GitHub Runner 拉取模型不稳定，这些在本地 `pytest -m slow` 执行。
+
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
 jobs:
-  test:
+  python-fast-tests:
+    name: Python 快速测试
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: learning-planning-multi-agent
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - name: Install dependencies
+          python-version: "3.12"
+          cache: pip
+
+      # 只装快速测试需要的轻依赖：不含 torch / chromadb / sentence-transformers
+      - name: 安装轻量依赖
         run: |
-          cd learning-planning-multi-agent
-          pip install -r requirements.txt
-      - name: Run tests
-        run: |
-          cd learning-planning-multi-agent
-          python test_modules.py
+          python -m pip install --upgrade pip
+          pip install pytest python-dotenv rank_bm25 jieba fastapi pydantic requests
+
+      - name: 校验知识库资源
+        run: python -B rebuild_knowledge_base.py --check
+
+      - name: 校验测试集引用完整性
+        run: python -B tools/build_testset.py
+
+      - name: 运行快速测试
+        run: python -B -m pytest -m "not slow" -v
+
+  frontend-build:
+    name: 前端构建
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查与构建
+        run: npm run build
+
+      # 回归保护：后端故障时必须报错，不能静默回退到假数据
+      - name: 校验 API 故障提示
+        run: npm run verify:api-errors
