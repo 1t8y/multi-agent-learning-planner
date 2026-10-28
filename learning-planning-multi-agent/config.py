@@ -65,7 +65,11 @@ class ConfigManager:
                 'top_k': int(os.getenv('RAG_TOP_K', '5')),
                 'rerank_enabled': os.getenv('RAG_RERANK_ENABLED', 'true').lower() == 'true',
                 'rerank_model': os.getenv('RAG_RERANK_MODEL', 'BAAI/bge-reranker-base'),
+                # 首位候选重排置信度低于该值时保留融合顺序（0 表示不做门控）
+                'rerank_min_confidence': float(os.getenv('RAG_RERANK_MIN_CONFIDENCE', '0')),
                 'quality_threshold': float(os.getenv('RAG_QUALITY_THRESHOLD', '0.55')),
+                # 结果中最少覆盖的资源类型数，0 表示关闭多样性约束
+                'min_types': int(os.getenv('RAG_MIN_TYPES', '0')),
                 'regeneration_threshold': float(os.getenv('REGENERATION_THRESHOLD', '6.0')),
                 'max_regeneration_rounds': int(os.getenv('MAX_REGENERATION_ROUNDS', '3')),
             }

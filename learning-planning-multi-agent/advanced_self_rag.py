@@ -21,9 +21,11 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
         rag = config.get_defaults().get("rag", {})
         self.CANDIDATE_K = int(rag.get("candidate_k", 10))
         self.TOP_K = int(rag.get("top_k", 5))
+        self.MIN_TYPES = int(rag.get("min_types", 0))
         self.reranker = ResourceReranker(
             model_name=rag.get("rerank_model", "BAAI/bge-reranker-base"),
             enabled=bool(rag.get("rerank_enabled", True)),
+            min_confidence=float(rag.get("rerank_min_confidence", 0.0)),
         )
         self.quality_checker = RAGQualityChecker(
             threshold=float(rag.get("quality_threshold", 0.55))
@@ -88,6 +90,7 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
                 query=query, field=filters["field"], level=filters["level"],
                 top_k=self.CANDIDATE_K, mode="hybrid",
                 resource_types=filters["resource_types"],
+                min_types=self.MIN_TYPES,
             )
             if results:
                 return results, filters

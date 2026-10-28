@@ -318,6 +318,9 @@ class SelfRAGRecommender:
                 continue  # 丢弃不相关的结果
             kb_kept += 1
             resource = {
+                # id 必须透传：前端提交反馈靠它定位资源，丢了就只能造 resource_0 这种假 id，
+                # 后端 update_feedback 会找不到资源而静默失败
+                "id": kb.get("id", ""),
                 "phase": "第一阶段：基础入门",
                 "type": kb.get("resource_type", "文档资料"),
                 "title": kb.get("title", ""),
@@ -326,7 +329,9 @@ class SelfRAGRecommender:
                 "difficulty": self._map_level(kb.get("level", "intermediate")),
                 "recommendation_reason": f"来自本地知识库，相似度 {sim:.2f}",
                 "url": kb.get("url", ""),
-                "source": "knowledge_base"
+                "source": "knowledge_base",
+                "rating": float(kb.get("rating", 0) or 0),
+                "feedback_count": int(kb.get("feedback_count", 0) or 0),
             }
             all_resources.append(resource)
 

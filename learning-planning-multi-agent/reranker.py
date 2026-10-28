@@ -7,6 +7,8 @@ import math
 import os
 from typing import Any
 
+from model_loader import get_cross_encoder
+
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 os.environ.setdefault("HF_HUB_DISABLE_SSL_VERIFY", "1")
 
@@ -14,23 +16,34 @@ os.environ.setdefault("HF_HUB_DISABLE_SSL_VERIFY", "1")
 class ResourceReranker:
     """Cross-Encoder 重排器，模型加载失败时自动退回原排序"""
 
-    def __init__(self, model_name: str = "BAAI/bge-reranker-base", enabled: bool = True):
-        """输入模型名和开关，初始化懒加载重排器"""
+    def __init__(
+        self,
+        model_name: str = "BAAI/bge-reranker-base",
+        enabled: bool = True,
+        min_confidence: float = 0.0,
+    ):
+        """
+        输入模型名、开关和门控阈值，初始化懒加载重排器。
+
+        min_confidence 为 0 表示不做门控（全量重排）。
+        大于 0 时，若首位候选的重排置信度低于该阈值，则保留融合顺序，
+        但仍把重排分数回填到结果上，供下游质量门控继续使用。
+        """
         self.model_name = model_name
         self.enabled = enabled
+        self.min_confidence = float(min_confidence)
+        self.last_gate_fallback = False
         self._model = None
         self._load_attempted = False
 
     def _ensure_model(self) -> None:
-        """首次调用时加载 Cross-Encoder 模型"""
+        """首次调用时加载 Cross-Encoder 模型（本地缓存优先，进程内共享）"""
         if self._load_attempted or not self.enabled:
             return
         self._load_attempted = True
         try:
-            from sentence_transformers import CrossEncoder
-
-            self._model = CrossEncoder(self.model_name)
-            print(f"[reranker] Cross-Encoder 已加载: {self.model_name}")
+            self._model = get_cross_encoder(self.model_name)
+            print(f"[reranker] Cross-Encoder 已就绪: {self.model_name}")
         except Exception as exc:
             self._model = None
             print(f"[reranker] 重排模型不可用，使用原排序: {exc}")
@@ -51,14 +64,21 @@ class ResourceReranker:
             for item in resources
         ]
         scores = self._model.predict(pairs, convert_to_numpy=True)
-        ranked = []
-        for item, score in zip(resources, scores):
-            ranked.append({
+        annotated = [
+            {
                 **item,
                 "rerank_score": round(float(score), 5),
                 "rerank_confidence": self._confidence(float(score)),
-            })
-        ranked.sort(key=lambda item: item["rerank_score"], reverse=True)
+            }
+            for item, score in zip(resources, scores)
+        ]
+        ranked = sorted(annotated, key=lambda item: item["rerank_score"], reverse=True)
+        if self.min_confidence > 0 and ranked[0]["rerank_confidence"] < self.min_confidence:
+            # 首位候选都拿不到足够置信度，说明模型对这题没有判断力，
+            # 此时按融合顺序返回更安全（实测该区间重排会净掉分）
+            self.last_gate_fallback = True
+            return annotated[:top_k]
+        self.last_gate_fallback = False
         return ranked[:top_k]
 
     def status(self) -> dict[str, Any]:
@@ -68,4 +88,5 @@ class ResourceReranker:
             "enabled": self.enabled,
             "available": self._model is not None,
             "model": self.model_name,
+            "min_confidence": self.min_confidence,
         }
