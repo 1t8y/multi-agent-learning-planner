@@ -7,9 +7,11 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi)
 ![Tests](https://img.shields.io/badge/tests-113%20passed-brightgreen)
 
-**四个 Agent 用 LangGraph 编排：一句自然语言需求进来，出去的是阶段化学习计划、带来源与评分的资源清单、六维质量评估。**
-资源推荐走增强 Self-RAG（BGE 稠密 + BM25 稀疏 + RRF 融合 + Cross-Encoder 精排 + 质量门控改写），
-每个环节的取舍都用 97 道自建题与 RAGAS 四指标量化，不是「看起来能用」。
+**一句话需求 → 阶段化学习计划 + 可溯源资源清单 + 六维评估，四个 Agent 用 LangGraph 编排，评估不达标回环重生成（≤3 轮）。**
+检索链路：BGE 稠密 + BM25 稀疏双路召回 → RRF 融合（只看名次，免归一化）→ Cross-Encoder 精排 → 置信度门控。
+留精排不是为了排序：它在这个语料上是负收益（Hit@1 0.9072 → 0.8866，延迟 9 → 365 ms），留它是给质量门控提供置信度信号；
+排序端加 0.55 阈值门控后 Hit@1 回到 0.9175，门控本身只多 0.1 ms；质量仍不足才改写重查、兜底联网。
+效果靠 97 道自建题 + 十档消融 + RAGAS 四指标 + 113 项 CI 测试说话，失败分析与已知偏差一并写在报告里。
 
 ---
 
