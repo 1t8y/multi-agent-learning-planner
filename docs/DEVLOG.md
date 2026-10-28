@@ -4,6 +4,36 @@
 > 评测数据见 [RETRIEVAL_EVAL.md](../learning-planning-multi-agent/RETRIEVAL_EVAL.md)。
 > 文末是版本里程碑。
 
+## 2026-10-28（接入 git 历史、CI 真跑通）
+
+本次不动业务代码，只解决「仓库推不上去、CI 没人验证过」：
+
+- **仓库形态**：项目此前没有自己的 `.git`（外层 `job-workspace` 是个无关的大仓），
+  所以把远程 `multi-agent-learning-planner` 的 `.git` 接过来，按功能点补 8 个提交，
+  而不是新开一个仓库强推覆盖历史。
+- **CI 从「文件存在」到「真的绿」**：两个 job 实测 23s / 17s 通过，
+  日志里 `113 passed, 6 deselected in 1.54s`，与 README 徽章一致。
+  推送前先用一个只装了 7 个包的 venv 模拟 CI（`pytest python-dotenv rank_bm25 jieba
+  fastapi pydantic requests`），确认快速套件不依赖 torch / chromadb / sentence-transformers，
+  避免出现「本地全绿、CI 装依赖装到超时」。
+
+踩到的四个坑：
+
+1. **换行**：仓库里是 LF、Windows 工作区是 CRLF。一开始把 `core.autocrlf` 设成 `false`，
+   提交进去的全是 CRLF，`git diff` 里每个文件都是整篇重写（`-w` 之后只剩 7 行真实差异，
+   才反推出是换行问题）。改成 `input` 并加 `.gitattributes`（`* text=auto`、二进制与
+   `*.jsonl/*.csv` 显式声明）后，diff 恢复成真实改动。
+2. **fine-grained PAT 缺 `workflow` 权限**：`git push` 被拒，
+   `refusing to allow a Personal Access Token to create or update workflow`。
+   这个权限只能在 GitHub token 设置里开，本地无法绕过。
+3. **SSH 端口被网络挡**：`ssh -T git@github.com` 直接 `Connection refused`（22 端口不通），
+   所以继续用 HTTPS + PAT，没有引入 SSH 密钥。
+4. **仓库主页残留失效链接**：仓库的 `homepage` 还指向 `ai-beige-eta.vercel.app`，
+   访问已经超时——正是「README 说不提供线上 demo、仓库主页却挂着一个死链接」的矛盾。
+   清这个字段需要 token 的 Administration 权限，本次没开，留给仓库设置页手动处理。
+
+顺带把三个官方 action 从 `v4`/`v5` 升到 `v7`，消掉 Node.js 20 弃用告警。
+
 ## 2026-10-28（演示素材：GIF 录制脚本 + 演示脚本）
 
 ```text
