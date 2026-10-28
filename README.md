@@ -7,10 +7,9 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi)
 ![Tests](https://img.shields.io/badge/tests-113%20passed-brightgreen)
 
-**输入一句「我是零基础，每天学 2 小时，想用视频学 Python」，输出一份可执行的学习计划、带可信来源的资源清单，以及一份质量评估。**
-
-四个 Agent 用 LangGraph 编排，资源推荐走增强 Self-RAG（BGE + BM25 + RRF 混合检索 + Cross-Encoder 精排 + 质量门控改写），
-链路效果用 97 道自建题和 RAGAS 四指标量化，不是「看起来能用」。
+**四个 Agent 用 LangGraph 编排：一句自然语言需求进来，出去的是阶段化学习计划、带来源与评分的资源清单、六维质量评估。**
+资源推荐走增强 Self-RAG（BGE 稠密 + BM25 稀疏 + RRF 融合 + Cross-Encoder 精排 + 质量门控改写），
+每个环节的取舍都用 97 道自建题与 RAGAS 四指标量化，不是「看起来能用」。
 
 ---
 
