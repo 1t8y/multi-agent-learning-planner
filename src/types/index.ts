@@ -39,6 +39,18 @@ export interface Resource {
   similarity?: number;
   rerank_score?: number;
   rerank_confidence?: number;
+  /** 知识库资源的平均评分（0 表示还没有反馈） */
+  rating?: number;
+  /** 该资源累计收到的反馈条数 */
+  feedback_count?: number;
+}
+
+/** 单个资源的反馈统计，由 /api/resources/{id}/stats 返回 */
+export interface ResourceStats {
+  id: string;
+  title?: string;
+  rating: number;
+  feedback_count: number;
 }
 
 export interface ResourcesData {
@@ -129,6 +141,8 @@ export interface ResourceSubmission {
   resource_type: string;
   field: string;
   tags: string[];
+  /** 难度等级，默认 intermediate；影响入库后能否被难度过滤命中 */
+  level?: 'beginner' | 'intermediate' | 'advanced';
 }
 
 export interface PlanStore {

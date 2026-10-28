@@ -1,30 +1,32 @@
 import { useState } from 'react';
 import { Wand2, Loader2, X } from 'lucide-react';
 import { usePlanStore } from '../store/planStore';
-import { generateLearningPlan, getMockPlanResponse } from '../utils/api';
+import { generateLearningPlan } from '../utils/api';
 
 export function InputSection() {
   const { userInput, setUserInput, isLoading, setIsLoading, setPlanResult, setError, planResult } = usePlanStore();
   const [inputValue, setInputValue] = useState(userInput);
 
   const handleSubmit = async () => {
-    if (!inputValue.trim()) {
+    const trimmed = inputValue.trim();
+    if (!trimmed) {
       setError('请输入您的学习需求');
       return;
     }
 
     setIsLoading(true);
     setError(null);
-    setUserInput(inputValue);
+    // 清空上一轮结果：请求失败时页面不能残留旧数据，更不能展示 mock 数据
+    setPlanResult(null);
+    setUserInput(trimmed);
 
     try {
-      const result = await generateLearningPlan(inputValue);
+      const result = await generateLearningPlan(trimmed);
       setPlanResult(result);
     } catch (error) {
-      console.error('API调用失败，使用模拟数据:', error);
-      const mockResult = getMockPlanResponse();
-      mockResult.requirement_data.learning_objective = inputValue;
-      setPlanResult(mockResult);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('生成学习规划失败:', error);
+      setError(`生成失败：${message}`);
     } finally {
       setIsLoading(false);
     }

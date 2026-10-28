@@ -1,14 +1,20 @@
+import { useState } from 'react';
 import { Target, Route, BookOpen, ClipboardCheck } from 'lucide-react';
 import { usePlanStore } from '../store/planStore';
+import { fetchResourceStats, submitFeedback } from '../utils/api';
 import { ResultCard } from './ResultCard';
 import { RequirementResult } from './RequirementResult';
 import { PlanResult } from './PlanResult';
 import { ResourcesResult } from './ResourcesResult';
 import { AssessmentResult } from './AssessmentResult';
-import type { FeedbackSubmission } from '../types';
+import { ResourceSubmitModal } from './ResourceSubmitModal';
+import type { FeedbackSubmission, ResourceStats } from '../types';
 
 export function ResultSection() {
   const { planResult } = usePlanStore();
+  // 反馈提交后刷新的资源统计，按资源 ID 覆盖到卡片展示上
+  const [resourceStats, setResourceStats] = useState<Record<string, ResourceStats>>({});
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
 
   if (!planResult) {
     return null;
@@ -16,14 +22,23 @@ export function ResultSection() {
 
   const learningObjective = planResult.requirement_data?.learning_objective || '';
 
-  const handleFeedbackSubmit = (feedback: FeedbackSubmission) => {
-    console.log('提交反馈:', feedback);
-    alert(`感谢您的反馈！\n资源: ${feedback.resource_title}\n反馈类型: ${feedback.feedback_type}`);
+  const handleFeedbackSubmit = async (feedback: FeedbackSubmission) => {
+    await submitFeedback(feedback);
+
+    if (!feedback.resource_id) {
+      return;
+    }
+    try {
+      const latest = await fetchResourceStats(feedback.resource_id);
+      setResourceStats((prev) => ({ ...prev, [feedback.resource_id]: latest }));
+    } catch (error) {
+      // 反馈已经落库，只是统计没刷新成功，不应把它报成提交失败
+      console.warn('反馈已提交，但刷新资源统计失败:', error);
+    }
   };
 
   const handleAddResource = () => {
-    console.log('添加新资源');
-    alert('资源提交功能正在开发中，敬请期待！');
+    setSubmitModalOpen(true);
   };
 
   return (
@@ -60,6 +75,7 @@ export function ResultSection() {
             learningObjective={learningObjective}
             onFeedbackSubmit={handleFeedbackSubmit}
             onAddResource={handleAddResource}
+            resourceStats={resourceStats}
           />
         </ResultCard>
 
@@ -71,6 +87,11 @@ export function ResultSection() {
           <AssessmentResult data={planResult.assessment} />
         </ResultCard>
       </div>
+
+      <ResourceSubmitModal
+        open={submitModalOpen}
+        onClose={() => setSubmitModalOpen(false)}
+      />
     </div>
   );
 }

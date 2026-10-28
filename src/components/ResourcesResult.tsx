@@ -1,12 +1,14 @@
-import { Video, FileText, Code, BookOpen, ExternalLink, Plus, Database, Globe, Bot } from 'lucide-react';
-import type { ResourcesDataWithRag, Resource, FeedbackSubmission } from '../types';
+import { Video, FileText, Code, BookOpen, ExternalLink, Plus, Database, Globe, Bot, Star } from 'lucide-react';
+import type { ResourcesDataWithRag, Resource, FeedbackSubmission, ResourceStats } from '../types';
 import { ResourceFeedback } from './ResourceFeedback';
 
 interface ResourcesResultProps {
   data: ResourcesDataWithRag;
   learningObjective: string;
-  onFeedbackSubmit: (feedback: FeedbackSubmission) => void;
+  onFeedbackSubmit: (feedback: FeedbackSubmission) => Promise<void>;
   onAddResource: () => void;
+  /** 反馈提交后刷新到的资源统计，按资源 ID 覆盖展示 */
+  resourceStats?: Record<string, ResourceStats>;
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -35,7 +37,7 @@ const sourceLabels: Record<string, string> = {
   'LLM生成': 'AI推荐',
 };
 
-export function ResourcesResult({ data, learningObjective, onFeedbackSubmit, onAddResource }: ResourcesResultProps) {
+export function ResourcesResult({ data, learningObjective, onFeedbackSubmit, onAddResource, resourceStats }: ResourcesResultProps) {
   const resources = data.resources || [];
   const ragInfo = data.rag_info;
 
@@ -101,9 +103,9 @@ export function ResourcesResult({ data, learningObjective, onFeedbackSubmit, onA
           <ResourceCard
             key={resource.id || index}
             resource={resource}
-            index={index}
             learningObjective={learningObjective}
             onFeedbackSubmit={onFeedbackSubmit}
+            stats={resource.id ? resourceStats?.[resource.id] : undefined}
           />
         ))
       )}
@@ -119,12 +121,18 @@ export function ResourcesResult({ data, learningObjective, onFeedbackSubmit, onA
 
 interface ResourceCardProps {
   resource: Resource;
-  index: number;
   learningObjective: string;
-  onFeedbackSubmit: (feedback: FeedbackSubmission) => void;
+  onFeedbackSubmit: (feedback: FeedbackSubmission) => Promise<void>;
+  stats?: ResourceStats;
 }
 
-function ResourceCard({ resource, index, learningObjective, onFeedbackSubmit }: ResourceCardProps) {
+function ResourceCard({ resource, learningObjective, onFeedbackSubmit, stats }: ResourceCardProps) {
+  // 提交后刷新的统计优先于接口返回时的快照
+  const shown = stats
+    ? { ...resource, rating: stats.rating, feedback_count: stats.feedback_count }
+    : resource;
+  const feedbackCount = shown.feedback_count ?? 0;
+
   return (
     <div
       className="bg-white rounded-xl p-4 border border-gray-100 hover:shadow-md transition-all duration-300"
@@ -164,6 +172,12 @@ function ResourceCard({ resource, index, learningObjective, onFeedbackSubmit }: 
           )}
           <p className="text-sm text-gray-500">难度：{resource.difficulty}</p>
           <p className="text-sm text-gray-500">时长：{resource.duration}</p>
+          {feedbackCount > 0 && (
+            <p className="text-xs text-amber-600 flex items-center justify-end gap-1 mt-1">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              {Number(shown.rating ?? 0).toFixed(1)}（{feedbackCount} 条反馈）
+            </p>
+          )}
         </div>
       </div>
       
@@ -175,8 +189,7 @@ function ResourceCard({ resource, index, learningObjective, onFeedbackSubmit }: 
       <p className="text-xs text-gray-400 mt-2">适用阶段：{resource.phase}</p>
 
       <ResourceFeedback
-        resource={resource}
-        index={index}
+        resource={shown}
         learningObjective={learningObjective}
         onSubmit={onFeedbackSubmit}
       />
