@@ -35,7 +35,10 @@ local_config.py
 .trae/documents/
 
 # Python runtime
+# 两套虚拟环境：.venv-run（运行/测试）与 .venv-ragas（RAGAS 评测），互不混用
 .venv/
+.venv-run/
+.venv-ragas/
 venv/
 env/
 env.local/
@@ -67,6 +70,9 @@ learning-planning-multi-agent/data/models/
 # User feedback and submitted resources
 learning-planning-multi-agent/data/feedback_records.json
 learning-planning-multi-agent/data/resource_submissions.json
+
+# 本地工作区数据（Agent 记忆与内部笔记，不属于项目源码）
+.workbuddy/
 learning-planning-multi-agent/data/evaluation/ragas_runtime_dataset.jsonl
 
 # Logs and local OS files

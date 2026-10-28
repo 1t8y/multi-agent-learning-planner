@@ -1,0 +1,15 @@
+# 统一换行：仓库内一律 LF（Windows 工作区可能是 CRLF，提交时自动转换）
+* text=auto
+
+# 二进制文件不做换行/文本处理
+*.gif binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# 评测数据保持原样，避免换行转换影响比对
+*.jsonl text eol=lf
+*.csv text eol=lf
