@@ -73,34 +73,15 @@ def load_approved_resources(path: Path = CATALOG_PATH) -> list[dict[str, Any]]:
 
 def rebuild_chroma(resources: list[dict[str, Any]]) -> dict[str, Any]:
     """输入 approved 资源列表，清空并重建 ChromaDB，返回统计信息"""
-    from vector_store import LearningResource, VectorStoreManager
+    from vector_store import VectorStoreManager, seed_catalog_resources
 
     store = VectorStoreManager()
     if not store._initialized:
         raise RuntimeError("ChromaDB 初始化失败，未执行重建")
 
     store.reset_database()
-    for item in resources:
-        resource = LearningResource(
-            id=str(item["id"]),
-            title=str(item["title"]),
-            description=str(item["description"]),
-            resource_type=str(item["resource_type"]),
-            field=str(item["field"]),
-            level=str(item["level"]),
-            url=str(item["url"]),
-            tags=[str(tag) for tag in item["tags"]],
-            source=str(item["source"]),
-            rating=float(item["rating"]),
-            feedback_count=int(item["feedback_count"]),
-            created_at=str(item["created_at"]),
-        )
-        store.collection.add(
-            ids=[resource.id],
-            documents=[f"{resource.title}\n{resource.description}"],
-            metadatas=[resource.to_metadata()],
-        )
-
+    # 批量写入：一次性编码，避免逐条触发 embedding
+    seed_catalog_resources(store, resources)
     store._bm25_stale = True
     return store.get_stats()
 

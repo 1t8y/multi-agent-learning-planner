@@ -1,0 +1,49 @@
+{
+  "old_file": "ragas_results_k5.csv",
+  "new_file": "ragas_results_v3_k5.csv",
+  "old_total": 30,
+  "new_total": 97,
+  "shared_questions": 30,
+  "overall": {
+    "faithfulness": {
+      "old": 0.943,
+      "new": 0.9463
+    },
+    "answer_relevancy": {
+      "old": 0.5419,
+      "new": 0.4932
+    },
+    "context_precision": {
+      "old": 0.9611,
+      "new": 0.9149
+    },
+    "context_recall": {
+      "old": 0.9833,
+      "new": 0.9966
+    }
+  },
+  "same_questions": {
+    "faithfulness": {
+      "old": 0.943,
+      "new": 0.9385
+    },
+    "answer_relevancy": {
+      "old": 0.5419,
+      "new": 0.5914
+    },
+    "context_precision": {
+      "old": 0.9611,
+      "new": 0.9167
+    },
+    "context_recall": {
+      "old": 0.9833,
+      "new": 1.0
+    }
+  },
+  "missing_new": {
+    "faithfulness": 0,
+    "answer_relevancy": 0,
+    "context_precision": 0,
+    "context_recall": 0
+  }
+}
