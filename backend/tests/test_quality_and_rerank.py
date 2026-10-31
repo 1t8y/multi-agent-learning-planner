@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-from rag_quality import RAGQualityChecker
-from reranker import ResourceReranker
+from src.rag.rag_quality import RAGQualityChecker
+from src.rag.reranker import ResourceReranker
 
 
 def _candidate(confidence: float, resource_type: str = "视频教程",
@@ -88,9 +88,10 @@ def test_reranker_empty_input_is_safe():
 
 def test_reranker_degrades_when_model_unavailable(monkeypatch):
     """模型加载失败时必须降级为原排序，不能抛异常中断整条链路"""
-    import reranker as reranker_module
+    from src.rag import reranker as reranker_module
 
     def boom(_name):
+        """替身加载函数：被调用即抛错，模拟模型文件缺失。"""
         raise RuntimeError("模型不可用")
 
     monkeypatch.setattr(reranker_module, "get_cross_encoder", boom, raising=False)
@@ -103,7 +104,7 @@ def test_reranker_degrades_when_model_unavailable(monkeypatch):
 
 def test_embedding_function_exposes_chroma_entrypoints():
     """Chroma 查询路径依赖 embed_query，缺失会导致稠密检索静默失败"""
-    from vector_store_core import BGEEmbeddingFunction
+    from src.memory.vector_store_core import BGEEmbeddingFunction
 
     assert hasattr(BGEEmbeddingFunction, "embed_query")
     assert hasattr(BGEEmbeddingFunction, "embed_documents")
@@ -114,6 +115,7 @@ class _StubModel:
     """固定输出的假 Cross-Encoder，用于离线验证门控逻辑"""
 
     def __init__(self, scores):
+        """保存一组预设分数，调用时按顺序返回，与被打分的内容无关。"""
         self.scores = scores
 
     def predict(self, pairs, convert_to_numpy=True):

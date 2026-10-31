@@ -1,12 +1,26 @@
+// 输入区：文本框 + 提交按钮 + 清除按钮。
+// 这里是 /api/plan 的唯一触发点，负责管理加载态与错误提示。
 import { useState } from 'react';
 import { Wand2, Loader2, X } from 'lucide-react';
 import { usePlanStore } from '../store/planStore';
 import { generateLearningPlan } from '../utils/api';
 
+/**
+ * 学习需求输入与提交。
+ *
+ * 输入框内容同时存在两处：组件内 inputValue（受控输入，逐字更新）
+ * 和 store.userInput（提交后才同步）。这样做是为了避免每次击键都触发全局重渲染。
+ */
 export function InputSection() {
   const { userInput, setUserInput, isLoading, setIsLoading, setPlanResult, setError, planResult } = usePlanStore();
   const [inputValue, setInputValue] = useState(userInput);
 
+  /**
+   * 提交学习需求。
+   *
+   * 顺序很重要：先清空上一轮结果再发请求。
+   * 这样请求失败时页面是「空的 + 错误提示」，不会残留上一轮的计划让人误以为是新结果。
+   */
   const handleSubmit = async () => {
     const trimmed = inputValue.trim();
     if (!trimmed) {
@@ -32,6 +46,7 @@ export function InputSection() {
     }
   };
 
+  /** 清空输入、结果与错误，回到初始状态。 */
   const handleClear = () => {
     setInputValue('');
     setUserInput('');
@@ -39,6 +54,7 @@ export function InputSection() {
     setError(null);
   };
 
+  /** 快捷键：Ctrl + Enter 提交（Enter 单独按下用于换行）。 */
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && e.ctrlKey) {
       handleSubmit();

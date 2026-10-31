@@ -12,7 +12,7 @@ pytestmark = pytest.mark.slow
 @pytest.fixture(scope="module")
 def store():
     """返回加载了真实知识库的向量库实例"""
-    from vector_store import init_vector_store_with_seed_data
+    from src.memory.vector_store import init_vector_store_with_seed_data
 
     return init_vector_store_with_seed_data()
 
@@ -59,7 +59,7 @@ def test_repeated_query_hits_cache(store):
 
 def test_reranker_available_and_ordered(store):
     """重排模型加载成功后，候选应按重排分数降序"""
-    from reranker import ResourceReranker
+    from src.rag.reranker import ResourceReranker
 
     reranker = ResourceReranker()
     candidates = store.search("机器学习 模型 评估", top_k=8, mode="hybrid")

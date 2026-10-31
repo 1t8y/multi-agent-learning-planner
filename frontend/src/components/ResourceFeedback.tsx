@@ -1,3 +1,4 @@
+// 单个资源的评价控件：折叠态一个按钮，展开后是 有用/没用 + 五星 + 备注。
 import { useState } from 'react';
 import { ThumbsUp, ThumbsDown, Star, X, Check, Loader2 } from 'lucide-react';
 import type { Resource, FeedbackSubmission } from '../types';
@@ -9,6 +10,12 @@ interface ResourceFeedbackProps {
   onSubmit: (feedback: FeedbackSubmission) => Promise<void>;
 }
 
+/**
+ * 资源评价。
+ *
+ * 三态展示：可评价 → 提交中（按钮禁用 + 转圈）→ 已提交（换成一句回执）。
+ * 「已提交」是终态，本轮不再允许改评，避免重复计数把平均分刷乱。
+ */
 export function ResourceFeedback({ resource, learningObjective, onSubmit }: ResourceFeedbackProps) {
   const [showFeedback, setShowFeedback] = useState(false);
   const [rating, setRating] = useState(0);
@@ -19,6 +26,12 @@ export function ResourceFeedback({ resource, learningObjective, onSubmit }: Reso
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  /**
+   * 提交评价。
+   *
+   * 评分是必填项（0 星直接拦在前端），有用/没用则通过按钮参数区分。
+   * 失败时只在本组件内显示红字，不影响页面上其它资源的评价。
+   */
   const handleSubmit = async (type: 'useful' | 'not_useful') => {
     if (rating === 0) {
       setErrorMessage('请先选择评分');

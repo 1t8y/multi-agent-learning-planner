@@ -106,7 +106,7 @@ cd multi-agent-learning-planner/backend
 python -m venv .venv-run
 .\.venv-run\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env      # 填入 DEEPSEEK_API_KEY
-.\.venv-run\Scripts\python.exe -B api_server.py
+.\.venv-run\Scripts\python.exe -B -m src.api.api_server
 ```
 
 后端起在 `http://localhost:8001`（接口文档 `/docs`）。另一个终端起前端：
@@ -127,17 +127,18 @@ npm run dev                      # http://localhost:5173
 ```text
 multi-agent/
 ├── backend/                         # Python 后端：LangGraph 多 Agent + 混合检索 RAG
-│   ├── api_server.py                # FastAPI 入口（7 个接口）
-│   ├── graph_orchestrator.py        # LangGraph 编排
-│   ├── requirement_extractor.py     # 需求提取（LLM 结构化 + 白名单校验）
-│   ├── course_planner.py            # 课程规划
-│   ├── resource_recommender.py      # 资源推荐
-│   ├── assessment_feedback.py       # 评估反馈
-│   ├── advanced_self_rag.py         # 增强 Self-RAG（过滤 → 召回 → 重排 → 质量门控）
-│   ├── vector_store_core.py         # Chroma + BM25 + RRF + 缓存
-│   ├── reranker.py / rag_quality.py # 精排（含置信度门控）与质量检测
-│   ├── bench_retrieval.py           # 十档消融与延迟基准
-│   ├── evaluate_ragas.py            # RAGAS 评测（支持 --resume 断点续跑）
+│   ├── src/                         # 全部业务代码，按职责分层
+│   │   ├── core/                    # Agent 内核：基类、需求提取、课程规划、资源推荐、评估、编排
+│   │   ├── memory/                  # 向量库、BM25 索引、本地模型加载
+│   │   ├── rag/                     # Self-RAG、Cross-Encoder 精排、质量门控
+│   │   ├── tools/                   # 联网搜索、本地资源同步
+│   │   ├── feedback/                # 评分记录与资源提交流程
+│   │   ├── api/                     # FastAPI 服务（7 个接口）
+│   │   ├── utils/                   # 检索指标等通用工具
+│   │   ├── config.py                # 配置单例（环境变量 + 默认值）
+│   │   └── paths.py                 # 统一路径常量，避免各处自己推导
+│   ├── eval/                        # 评测与回归：十档消融、RAGAS、场景回归、实验分析
+│   ├── scripts/                     # 离线脚本：重建知识库、构建评测集、下载模型
 │   ├── tests/                       # pytest 119 项（113 快速 + 6 集成）
 │   └── data/                        # 60 条已审核资源 + 评测集与结果
 ├── frontend/                        # React + TypeScript + Vite（输入 / 结果 / 反馈 / 贡献资源）

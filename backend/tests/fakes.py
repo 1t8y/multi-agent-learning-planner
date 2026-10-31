@@ -8,7 +8,7 @@ import itertools
 import re
 from typing import Any, Dict, List, Optional
 
-from vector_store_core import VectorStoreManager
+from src.memory.vector_store_core import VectorStoreManager
 
 _SEQ = itertools.count()
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[\u4e00-\u9fff]")
@@ -39,6 +39,7 @@ class FakeCollection:
     """内存版集合：query 用词重叠度打分，结构对齐 Chroma 返回格式"""
 
     def __init__(self, resources: List[Dict[str, Any]]):
+        """用一批资源初始化内存集合，键统一转成字符串（与 Chroma 的 id 类型保持一致）。"""
         self.resources = {str(r["id"]): dict(r) for r in resources}
 
     def add(self, ids, documents, metadatas):
@@ -87,6 +88,7 @@ class FakeCollection:
         }
 
     def count(self) -> int:
+        """返回集合内资源条数，用于断言写入/删除后的规模。"""
         return len(self.resources)
 
 

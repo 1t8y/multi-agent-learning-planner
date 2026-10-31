@@ -1,5 +1,12 @@
+// 加载态占位：请求进行中时替换结果区，避免用户以为页面卡死。
 import { Loader2 } from 'lucide-react';
 
+/**
+ * 转圈动画 + 一句提示。
+ *
+ * 这里没有进度百分比：后端是一次性返回，无法给出真实进度，
+ * 写死一个「70%」反而是误导，所以只表达「正在处理」。
+ */
 export function LoadingSpinner() {
   return (
     <div className="flex flex-col items-center justify-center py-12">

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import importlib
 
-from vector_store_core import _tokenize_for_bm25
+from src.memory.vector_store_core import _tokenize_for_bm25
 
 
 def test_tokenize_returns_list_for_text():
@@ -36,7 +36,7 @@ def test_tokenize_splits_english_terms():
 
 def test_config_exposes_rag_defaults():
     """配置必须提供完整的 rag 参数，缺一个会让下游取到意外的默认值"""
-    from config import config
+    from src.config import config
 
     rag = config.get_defaults().get("rag", {})
     for key in ("similarity_threshold", "min_kb_similarity", "candidate_k", "top_k",
@@ -47,7 +47,7 @@ def test_config_exposes_rag_defaults():
 
 def test_config_singleton_reused():
     """配置管理器是单例，重复导入不应重新读盘"""
-    from config import ConfigManager
+    from src.config import ConfigManager
 
     assert ConfigManager() is ConfigManager()
 
@@ -56,7 +56,7 @@ def test_config_env_override(monkeypatch):
     """环境变量应能覆盖 RAG 阈值，便于线上调参"""
     monkeypatch.setenv("RAG_TOP_K", "9")
     monkeypatch.setenv("RAG_QUALITY_THRESHOLD", "0.81")
-    import config as config_module
+    from src import config as config_module
 
     fresh = importlib.reload(config_module)
     try:
@@ -70,7 +70,7 @@ def test_config_env_override(monkeypatch):
 
 def test_model_config_has_required_keys():
     """模型配置要提供调用外部接口所需的全部字段"""
-    from config import config
+    from src.config import config
 
     model_config = config.get_model_config()
     for key in ("model", "max_tokens", "temperature", "timeout", "retry_count"):
@@ -82,12 +82,15 @@ def test_model_loader_prefers_local_cache_then_falls_back(monkeypatch):
     import sys
     import types
 
-    import model_loader
+    from src.memory import model_loader
 
     calls: list[tuple[str, bool]] = []
 
     class FakeSentenceTransformer:
+        """替身模型类：只记录构造参数，不真的加载权重，用于验证离线优先策略。"""
+
         def __init__(self, name, local_files_only=False, **kwargs):
+            """记录构造参数；被要求只用本地缓存时抛错，模拟「缓存里没有」。"""
             calls.append((name, local_files_only))
             if local_files_only:
                 raise RuntimeError("本地无缓存")

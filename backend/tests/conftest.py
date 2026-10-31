@@ -35,5 +35,5 @@ def testset_rows() -> list[dict]:
 
     path = PROJECT_ROOT / "data" / "evaluation" / "ragas_testset_v3.jsonl"
     if not path.exists():
-        pytest.skip("评测测试集尚未构建，先运行 tools/build_testset.py")
+        pytest.skip("评测测试集尚未构建，先运行 python -m scripts.build_testset")
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]

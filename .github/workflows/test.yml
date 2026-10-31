@@ -35,10 +35,10 @@ jobs:
           pip install pytest python-dotenv rank_bm25 jieba fastapi pydantic requests
 
       - name: 校验知识库资源
-        run: python -B rebuild_knowledge_base.py --check
+        run: python -B -m scripts.rebuild_knowledge_base --check
 
       - name: 校验测试集引用完整性
-        run: python -B tools/build_testset.py
+        run: python -B -m scripts.build_testset
 
       - name: 运行快速测试
         run: python -B -m pytest -m "not slow" -v

@@ -1,10 +1,18 @@
+// 课程规划结果：可行性 / 预估周期两张概要卡 + 分阶段学习路径。
 import { CheckCircle, Clock, Target } from 'lucide-react';
 import type { PlanData } from '../types';
 
 interface PlanResultProps {
+  /** 课程规划 Agent 的输出：可行性判断、总时长、阶段列表 */
   data: PlanData;
 }
 
+/**
+ * 学习路径展示。
+ *
+ * 阶段顺序完全按后端返回的数组顺序渲染，前端不重排：
+ * 阶段之间存在先后依赖，重排会把学习顺序打乱。
+ */
 export function PlanResult({ data }: PlanResultProps) {
   return (
     <div className="space-y-6">

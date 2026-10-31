@@ -6,7 +6,7 @@
 
 import pytest
 
-from requirement_extractor import RequirementExtractorAgent
+from src.core.requirement_extractor import RequirementExtractorAgent
 
 FIELDS = (
     "learning_objective",

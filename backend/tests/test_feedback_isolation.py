@@ -10,7 +10,7 @@ import os
 
 def test_feedback_writes_to_custom_data_dir(tmp_path):
     """指定 data_dir 时，反馈与资源提交都只落在该目录"""
-    from feedback_manager import FeedbackManager
+    from src.feedback.feedback_manager import FeedbackManager
 
     manager = FeedbackManager(data_dir=str(tmp_path))
     manager.submit_feedback(
@@ -33,7 +33,7 @@ def test_feedback_writes_to_custom_data_dir(tmp_path):
 
 def test_feedback_reload_from_custom_dir(tmp_path):
     """同一目录再次初始化时应能读回历史记录，便于重启后保留数据"""
-    from feedback_manager import FeedbackManager
+    from src.feedback.feedback_manager import FeedbackManager
 
     FeedbackManager(data_dir=str(tmp_path)).submit_feedback(
         resource_id="r2",
@@ -52,7 +52,7 @@ def test_feedback_reload_from_custom_dir(tmp_path):
 
 def test_submitted_resource_lands_in_pending_with_level(tmp_path):
     """提交的资源必须进入 pending，并保留调用方给的难度而不是硬编码 intermediate"""
-    from feedback_manager import FeedbackManager
+    from src.feedback.feedback_manager import FeedbackManager
 
     manager = FeedbackManager(data_dir=str(tmp_path))
     result = manager.submit_resource(
@@ -77,7 +77,7 @@ def test_submitted_resource_lands_in_pending_with_level(tmp_path):
 
 def test_submit_resource_rejects_illegal_level(tmp_path):
     """非法难度回落到 intermediate，避免入库后无法被任何难度过滤命中"""
-    from feedback_manager import FeedbackManager
+    from src.feedback.feedback_manager import FeedbackManager
 
     manager = FeedbackManager(data_dir=str(tmp_path))
     result = manager.submit_resource(
@@ -95,7 +95,7 @@ def test_submit_resource_rejects_illegal_level(tmp_path):
 
 def test_submit_resource_requires_title_and_url(tmp_path):
     """标题或 URL 为空时直接拒绝，不能进待审核队列"""
-    from feedback_manager import FeedbackManager
+    from src.feedback.feedback_manager import FeedbackManager
 
     manager = FeedbackManager(data_dir=str(tmp_path))
     assert manager.submit_resource(

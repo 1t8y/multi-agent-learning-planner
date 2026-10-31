@@ -73,12 +73,12 @@ extract ──► plan ──► recommend ──┐
 
 | 组件 | 文件 | 作用 |
 |---|---|---|
-| 增强 Self-RAG | `advanced_self_rag.py` | 串联过滤、召回、重排、质量门控与改写 |
-| 混合检索核心 | `vector_store_core.py` | ChromaDB + BM25 + RRF + 元数据过滤 + LRU 缓存 |
-| Cross-Encoder | `reranker.py` | `BAAI/bge-reranker-base` 精排，支持置信度门控 |
-| 质量检测 | `rag_quality.py` | 输出质量分/等级/信号，决定是否改写重试 |
-| 模型加载 | `model_loader.py` | Embedding / Reranker 进程内单例，本地缓存优先 |
-| 检索指标 | `retrieval_metrics.py` | Hit@k / MRR@k / P@k，支持一题多答案 |
+| 增强 Self-RAG | `src/rag/advanced_self_rag.py` | 串联过滤、召回、重排、质量门控与改写 |
+| 混合检索核心 | `src/memory/vector_store_core.py` | ChromaDB + BM25 + RRF + 元数据过滤 + LRU 缓存 |
+| Cross-Encoder | `src/rag/reranker.py` | `BAAI/bge-reranker-base` 精排，支持置信度门控 |
+| 质量检测 | `src/rag/rag_quality.py` | 输出质量分/等级/信号，决定是否改写重试 |
+| 模型加载 | `src/memory/model_loader.py` | Embedding / Reranker 进程内单例，本地缓存优先 |
+| 检索指标 | `src/utils/retrieval_metrics.py` | Hit@k / MRR@k / P@k，支持一题多答案 |
 
 模型：Embedding `BAAI/bge-small-zh-v1.5`，重排 `BAAI/bge-reranker-base`，均在本地推理。
 
@@ -111,4 +111,4 @@ dense 余弦和 BM25 分数归一化。三路信息分开留痕——原始分�
 - **资源 ID 必须全程透传**：Self-RAG 合成结果时若丢掉知识库 `id`，前端只能造 `resource_0` 假 ID，
   反馈会「记录成功但评分永不更新」。因此 `id` / `rating` / `feedback_count` 三个字段在合成阶段必须保留。
 - **评测集与知识库同源**：`data/evaluation/testset_queries.jsonl` 是人工维护的唯一来源，
-  `ragas_testset_v3.jsonl` 由 `tools/build_testset.py` 派生，避免手改两处产生漂移。
+  `ragas_testset_v3.jsonl` 由 `scripts/build_testset.py` 派生，避免手改两处产生漂移。

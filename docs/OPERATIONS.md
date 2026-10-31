@@ -77,24 +77,27 @@ RAG_MIN_TYPES=0
 ```powershell
 cd backend
 
-# 快速套件：104 项，约 2 秒，不需要模型和向量库
+# 快速套件：113 项，约 2 秒，不需要模型和向量库
 .\.venv-run\Scripts\python.exe -B -m pytest -m "not slow"
 
 # 集成套件：6 项，约 20 秒，需要本地 Embedding / Cross-Encoder
 .\.venv-run\Scripts\python.exe -B -m pytest -m slow
 
-# 其他回归脚本
-.\.venv-run\Scripts\python.exe -B test_modules.py       # 模块冒烟
-.\.venv-run\Scripts\python.exe -B test_e2e.py           # 端到端（反馈数据写临时目录）
-.\.venv-run\Scripts\python.exe -B test_rag_pipeline.py  # 增强 RAG 10 个场景
+# 其他回归脚本（分层后统一用 -m 在 backend/ 下运行）
+.\.venv-run\Scripts\python.exe -B -m eval.test_modules        # 模块冒烟
+.\.venv-run\Scripts\python.exe -B -m eval.test_e2e            # 端到端（反馈数据写临时目录）
+.\.venv-run\Scripts\python.exe -B -m eval.test_rag_pipeline   # 增强 RAG 10 个场景
 
 # 检索消融（十档，约 2 分钟）
-.\.venv-run\Scripts\python.exe -B bench_retrieval.py
+.\.venv-run\Scripts\python.exe -B -m eval.bench_retrieval
 
 # RAGAS 全量评测（约 55 分钟，需要 DeepSeek key）
 $env:HF_HUB_OFFLINE=1; $env:TRANSFORMERS_OFFLINE=1
-.\.venv-ragas\Scripts\python.exe -B evaluate_ragas.py --top-k 5 --mode hybrid --ragas --workers 14 --output data\evaluation\ragas_results_v3_k5.csv
+.\.venv-ragas\Scripts\python.exe -B -m eval.evaluate_ragas --top-k 5 --mode hybrid --ragas --workers 14 --output data\evaluation\ragas_results_v3_k5.csv
 ```
+
+> 用 `-m` 而不是直接跑文件，是因为分层后源码在 `src/` 下，
+> 脚本需要从 `backend/` 出发才能解析 `src.*` 与 `data/`。
 
 评测中断（断网/超时）不必重跑全量：加 `--resume` 只补跑缺失题目并回填原文件。
 
@@ -117,8 +120,8 @@ Embedding 与 Cross-Encoder 要加载到内存。模型已做进程内单例与�
 
 **改了知识库资源后检索不到**
 `data/knowledge_base/*.jsonl` 改动后必须重建向量库：
-`python -B rebuild_knowledge_base.py --rebuild`，否则 Chroma 与文件不一致。
-同时跑 `python -B tools/build_testset.py` 更新派生评测集。
+`python -B -m scripts.rebuild_knowledge_base --rebuild`，否则 Chroma 与文件不一致。
+同时跑 `python -B -m scripts.build_testset` 更新派生评测集。
 
 **反馈提交成功但评分没变**
 资源没有知识库 `id`（联网搜索或 LLM 生成的资源）时不会写回评分——这类资源本来就不在库里。
@@ -126,4 +129,4 @@ Embedding 与 Cross-Encoder 要加载到内存。模型已做进程内单例与�
 
 **想清空本地反馈数据重来**
 删 `data/feedback_records.json` 与 `data/resource_submissions.json`（都是运行时生成、已被 Git 忽略），
-并重置 Chroma 中资源的 `rating` / `feedback_count`：`python -B rebuild_knowledge_base.py --rebuild`。
+并重置 Chroma 中资源的 `rating` / `feedback_count`：`python -B -m scripts.rebuild_knowledge_base --rebuild`。

@@ -1,10 +1,14 @@
+// 「贡献新资源」弹窗：前端先做一遍白名单校验，再提交到 /api/resources/submit。
+// 提交成功后不会立刻出现在推荐里——要先进待审核队列，审核通过才入库。
 import { useEffect, useState } from 'react';
 import { X, Loader2, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
 import { submitResource } from '../utils/api';
 import type { ResourceSubmission } from '../types';
 
 interface ResourceSubmitModalProps {
+  /** 是否显示弹窗；false 时组件直接返回 null，不渲染 DOM */
   open: boolean;
+  /** 关闭回调；提交中会被忽略，防止请求还没回来就关窗 */
   onClose: () => void;
 }
 
@@ -17,6 +21,7 @@ const LEVEL_OPTIONS = [
   { value: 'advanced', label: '高阶' },
 ] as const;
 
+/** 表单内部状态；tags 用原始字符串保存，提交时才拆分去重 */
 interface FormState {
   title: string;
   url: string;
@@ -71,6 +76,12 @@ function validate(form: FormState): string | null {
   return null;
 }
 
+/**
+ * 资源贡献弹窗。
+ *
+ * 两个 useEffect 分别负责：打开时清掉上次的错误提示、监听 Esc 关闭。
+ * 关闭按钮在提交中会被忽略，避免用户在请求途中关窗造成「已提交但没看到结果」。
+ */
 export function ResourceSubmitModal({ open, onClose }: ResourceSubmitModalProps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -101,11 +112,18 @@ export function ResourceSubmitModal({ open, onClose }: ResourceSubmitModalProps)
     return null;
   }
 
+  /** 改任意一个字段：顺带清掉上一次的错误提示，避免旧错误一直挂着。 */
   const update = (patch: Partial<FormState>) => {
     setForm((prev) => ({ ...prev, ...patch }));
     setErrorMessage(null);
   };
 
+  /**
+   * 校验并提交。
+   *
+   * 校验分两层：这里先做即时反馈（不浪费一次网络请求），
+   * 后端仍会再校验一次白名单——前端校验只是体验优化，不是安全边界。
+   */
   const handleSubmit = async () => {
     const invalid = validate(form);
     if (invalid) {

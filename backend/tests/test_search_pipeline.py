@@ -122,7 +122,7 @@ def test_empty_query_returns_nothing(store):
 
 def test_where_clause_builder_nests_conditions():
     """多个过滤条件应组合成 $and，单个条件直接平铺"""
-    from vector_store_core import VectorStoreManager
+    from src.memory.vector_store_core import VectorStoreManager
 
     store = make_store([])
     assert store._build_where(None, None, None) == {}

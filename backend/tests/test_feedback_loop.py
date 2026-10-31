@@ -54,7 +54,7 @@ def test_merge_and_select_passes_resource_id():
     历史缺陷：这里只复制标题/描述，id 丢失后前端只能造 resource_0 这种假 id，
     后端 update_feedback 找不到资源，评分永远不更新。
     """
-    from self_rag_recommender import RAGState, SelfRAGRecommender
+    from src.rag.self_rag_recommender import RAGState, SelfRAGRecommender
 
     recommender = object.__new__(SelfRAGRecommender)
     recommender.MIN_KB_SIMILARITY = 0.15
@@ -87,7 +87,7 @@ def test_merge_and_select_passes_resource_id():
 
 def test_merge_and_select_drops_low_similarity():
     """相似度低于阈值的知识库结果不应进入最终列表（保护既有行为）"""
-    from self_rag_recommender import RAGState, SelfRAGRecommender
+    from src.rag.self_rag_recommender import RAGState, SelfRAGRecommender
 
     recommender = object.__new__(SelfRAGRecommender)
     recommender.MIN_KB_SIMILARITY = 0.5

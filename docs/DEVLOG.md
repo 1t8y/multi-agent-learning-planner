@@ -7,6 +7,31 @@
 > 注：2026-10-31 起后端目录由 `learning-planning-multi-agent/` 改名为 `backend/`、
 > 前端移入 `frontend/`。下文早于该日期的记录保留当时的目录名。
 
+## 2026-10-31（后端分层重构 + 全量中文注释）
+
+上一轮受「只改目录不改代码」约束，后端 29 个模块只能平铺。这次允许改代码，
+所以按职责重新分层，并把注释补到「一眼能看懂」的程度。
+
+- **分层**：`backend/src/{core,memory,rag,tools,feedback,api,utils}`，
+  评测脚本进 `eval/`、离线脚本进 `scripts/`；依赖方向固定为
+  `config/utils → memory/tools → rag → feedback/core → api`，避免导入成环。
+- **必须一起改的四处**（不改不会报 ImportError，而是静默走错路径，更难查）：
+  - `config._get_project_root()`：文件下移一层后，上溯两级的落点从仓库根变成 `backend/`，
+    正好对上 `.env` 与 `data/`，这点要专门确认而不是想当然。
+  - `api_server` 启动时的 `os.chdir`：原来切到自身目录（当时等于 `backend/`），
+    下移后必须显式切到 `BACKEND_ROOT`，否则 `data/`、`chroma_db/` 全部指错。
+  - 各评测脚本的 `ROOT = Path(__file__).parent`：下移后指向子目录，
+    统一换成 `src.paths.BACKEND_ROOT`，并新增 `src/paths.py` 收敛路径常量。
+  - `eval/test_modules.py` 用 `__import__('config')` 动态导入：分层后必然失败，
+    改为正常导入，同时拆掉 lambda 套 lambda 的写法（检查项与输出格式完全不变）。
+- **注释**：AST 统计 433 个类/函数，原有 400 个已是中文 docstring，补了 33 个缺口；
+  前端 18 个文件原本几乎零注释，补齐文件头、组件说明、props 字段与关键分支。
+  只加注释，未改任何逻辑。
+- **验证**：pytest 119 全绿；`eval.test_rag_pipeline` 10/10；
+  `eval.bench_retrieval` 十档指标与重构前逐项一致（0.8454 / 0.8866 / 0.9072 / 0.9175 / 0.9691）；
+  真实 `POST /api/plan` 200、17.9s，五字段 / 5 阶段 / 2 条资源 / 评分 8.2 均正常；
+  前端 `tsc && vite build` 产物大小与重构前完全相同（186.49 kB），说明注释未进入构建产物。
+
 ## 2026-10-31（目录结构调整：前后端分区）
 
 目标是把仓库入口理干净，不改任何业务代码。

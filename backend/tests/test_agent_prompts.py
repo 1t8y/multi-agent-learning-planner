@@ -8,9 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from base_agent import BaseAgent
+from src.core.base_agent import BaseAgent
+from src.paths import BACKEND_ROOT
 
-PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+# 分层后源码都在 src/ 下，Agent 内核在 src/core/
+SRC_ROOT = BACKEND_ROOT / "src"
+AGENT_DIR = SRC_ROOT / "core"
 # 拆开拼是为了不让自己出现在「全仓搜索该路径」的结果里（这个字符串是搜索模式，不是引用）
 DEAD_PROMPT_DIR = ".trae" + "/agents"
 AGENT_FILES = [
@@ -28,12 +31,15 @@ class _DummyAgent(BaseAgent):
     AGENT_NAME = "dummy"
 
     def _get_default_prompt(self) -> str:
+        """返回固定提示词，用于验证基类不会去磁盘找提示词文件。"""
         return "DUMMY_PROMPT"
 
     def _get_default_result(self) -> dict:
+        """兜底结果，这里用空字典即可。"""
         return {}
 
     def process(self, user_input: str) -> str:
+        """最小实现：原样回显输入，避免抽象方法阻塞实例化。"""
         return user_input
 
 
@@ -49,7 +55,7 @@ def test_base_agent_uses_default_prompt_without_file_lookup():
 @pytest.mark.parametrize("filename", AGENT_FILES)
 def test_no_dead_prompt_path_reference(filename):
     """五个文件里都不能再出现外置提示词目录 / PROMPT_FILE 常量"""
-    source = (PACKAGE_ROOT / filename).read_text(encoding="utf-8")
+    source = (AGENT_DIR / filename).read_text(encoding="utf-8")
 
     assert ".trae" not in source
     assert "PROMPT_FILE" not in source
@@ -60,7 +66,7 @@ def test_package_has_no_dead_prompt_directory_reference():
     """全包扫描：除测试自身外，没有任何 .py 指向不存在的提示词目录"""
     offenders = [
         path.name
-        for path in PACKAGE_ROOT.glob("*.py")
+        for path in SRC_ROOT.rglob("*.py")
         if DEAD_PROMPT_DIR in path.read_text(encoding="utf-8").replace("\\", "/")
     ]
 

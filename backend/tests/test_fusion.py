@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 
-from vector_store_core import VectorStoreManager
+from src.memory.vector_store_core import VectorStoreManager
 from tests.fakes import make_store
 
 

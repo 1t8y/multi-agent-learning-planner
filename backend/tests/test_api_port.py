@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from api_server import DEFAULT_API_PORT, resolve_api_port
+from src.api.api_server import DEFAULT_API_PORT, resolve_api_port
 
 
 def test_default_port_is_8001(monkeypatch):

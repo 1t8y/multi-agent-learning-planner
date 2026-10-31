@@ -1,16 +1,25 @@
+// 评估反馈结果：总分 + 四维评分、逐阶段指标、调整建议、综合建议。
 import { Star, TrendingUp, AlertTriangle, Lightbulb } from 'lucide-react';
 import type { AssessmentData } from '../types';
 
 interface AssessmentResultProps {
+  /** 评估 Agent 的输出；score_average 低于 6 时后端会自动重规划，前端只展示最终结果 */
   data: AssessmentData;
 }
 
+// 建议优先级 → 圆点颜色；后端可能给中文或其它值，未命中时回落灰色
 const priorityColors: Record<string, string> = {
   '高': 'bg-red-500',
   '中': 'bg-yellow-500',
   '低': 'bg-green-500',
 };
 
+/**
+ * 学习方案评估展示。
+ *
+ * 四块内容分别对应后端 assessment 的四个字段，
+ * 全部按数组顺序渲染，前端不做筛选或排序。
+ */
 export function AssessmentResult({ data }: AssessmentResultProps) {
   const { assessment_summary, assessment_metrics, adjustment_suggestions, recommendations } = data;
 

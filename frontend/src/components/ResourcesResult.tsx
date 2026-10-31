@@ -1,3 +1,4 @@
+// 资源推荐结果：检索自述信息条 + 资源卡片列表 + 贡献入口。
 import { Video, FileText, Code, BookOpen, ExternalLink, Plus, Database, Globe, Bot, Star } from 'lucide-react';
 import type { ResourcesDataWithRag, Resource, FeedbackSubmission, ResourceStats } from '../types';
 import { ResourceFeedback } from './ResourceFeedback';
@@ -11,6 +12,7 @@ interface ResourcesResultProps {
   resourceStats?: Record<string, ResourceStats>;
 }
 
+// 资源类型 → 图标 / 配色。后端类型只认这四种，新增类型会落到灰色兜底样式
 const typeIcons: Record<string, React.ReactNode> = {
   '视频教程': <Video className="w-5 h-5" />,
   '文字教程': <FileText className="w-5 h-5" />,
@@ -25,6 +27,7 @@ const typeColors: Record<string, string> = {
   '文档资料': 'bg-purple-50 text-purple-600',
 };
 
+// 来源 → 图标 / 中文名。知识库、联网、LLM 生成的资源在视觉上要能一眼区分
 const sourceIcons: Record<string, React.ReactNode> = {
   'knowledge_base': <Database className="w-3.5 h-3.5" />,
   'web_search': <Globe className="w-3.5 h-3.5" />,
@@ -37,6 +40,12 @@ const sourceLabels: Record<string, string> = {
   'LLM生成': 'AI推荐',
 };
 
+/**
+ * 资源列表。
+ *
+ * 顶部那条 rag_info 不是装饰：它说明这批结果是走知识库、联网还是纯 LLM 生成，
+ * 以及检索质量与是否重排过。演示和排障时都靠它解释「为什么推了这些」。
+ */
 export function ResourcesResult({ data, learningObjective, onFeedbackSubmit, onAddResource, resourceStats }: ResourcesResultProps) {
   const resources = data.resources || [];
   const ragInfo = data.rag_info;
@@ -126,6 +135,12 @@ interface ResourceCardProps {
   stats?: ResourceStats;
 }
 
+/**
+ * 单条资源卡片。
+ *
+ * 展示的评分优先用 stats（反馈后重新拉到的实时值），
+ * 没有就退回 resource 自带的那份（/api/plan 返回时的快照）。
+ */
 function ResourceCard({ resource, learningObjective, onFeedbackSubmit, stats }: ResourceCardProps) {
   // 提交后刷新的统计优先于接口返回时的快照
   const shown = stats

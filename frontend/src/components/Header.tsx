@@ -1,5 +1,7 @@
+// 页面标题区：纯展示组件，不接收任何 props，也不读写全局状态。
 import { Brain, Sparkles } from 'lucide-react';
 
+/** 顶部标题与副标题。 */
 export function Header() {
   return (
     <header className="text-center mb-10">

@@ -2,7 +2,7 @@
 
 > 版本：v2.5.0  
 > 生成日期：2026-10-26  
-> 数据与脚本：`data/evaluation/ragas_testset_v3.jsonl`、`bench_retrieval.py`、`retrieval_metrics.py`、`tools/compare_ragas.py`
+> 数据与脚本：`data/evaluation/ragas_testset_v3.jsonl`、`eval/bench_retrieval.py`、`src/utils/retrieval_metrics.py`、`scripts/compare_ragas.py`
 
 ---
 
@@ -36,7 +36,7 @@
 
 领域只保留 `AI / 编程 / 数学` 三类，因为 `_detect_field` 只识别这三种；加入新领域会变成永远检索不到的孤儿数据。
 
-测试集 97 题，每题包含问题和可接受答案集合，`ground_truth` 与 `reference_contexts` 由 `tools/build_testset.py` 从知识库实时生成——资源改一次，答案跟着改，不会出现答案漂移。
+测试集 97 题，每题包含问题和可接受答案集合，`ground_truth` 与 `reference_contexts` 由 `scripts/build_testset.py` 从知识库实时生成——资源改一次，答案跟着改，不会出现答案漂移。
 
 | 查询风格 | 题数 | 说明 |
 |---|---:|---|
@@ -366,34 +366,34 @@ LeetCode 的 dense 余弦最高，但 BM25 完全没命中，融合靠第二路�
 cd backend
 
 # 1. 重建知识库（会清空并重写 chroma_db）
-python -B rebuild_knowledge_base.py --rebuild
+python -B -m scripts.rebuild_knowledge_base --rebuild
 
 # 2. 重建评测测试集（从知识库派生答案）
-python -B tools/build_testset.py
+python -B -m scripts.build_testset
 
 # 3. 消融评测（含重排，约 1.5 分钟）
-python -B bench_retrieval.py
+python -B -m eval.bench_retrieval
 
 # 3.1 诊断重排为何改变名次（逐题打印候选的 dense/sparse 排名与重排分数）
-python -B tools/analyze_rerank.py
+python -B -m eval.tools.analyze_rerank
 
 # 3.2 量化重排失效条件与阈值回退效果
-python -B tools/experiment_rerank_gate.py
+python -B -m eval.tools.experiment_rerank_gate
 
 # 4. 只要三路对比
-python -B evaluate.py
+python -B -m eval.evaluate
 
 # 5. 测试
 python -B -m pytest -m "not slow"   # 113 项，约 3 秒
 python -B -m pytest -m slow         # 6 项，约 20 秒（需本地模型）
 
 # 6. RAGAS 全量评测（需 .venv-ragas + DeepSeek key，约 55 分钟）
-HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv-ragas/Scripts/python.exe -B evaluate_ragas.py `
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv-ragas/Scripts/python.exe -B -m eval.evaluate_ragas `
   --top-k 5 --mode hybrid --ragas --workers 14 `
   --output data/evaluation/ragas_results_v3_k5.csv
 
 # 6.1 网络中断后补齐缺失题（只重跑有 NaN 的题目并回填）
-HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv-ragas/Scripts/python.exe -B evaluate_ragas.py `
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv-ragas/Scripts/python.exe -B -m eval.evaluate_ragas `
   --top-k 5 --mode hybrid --resume --workers 8 `
   --output data/evaluation/ragas_results_v3_k5.csv
 
