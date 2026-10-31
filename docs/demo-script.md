@@ -101,12 +101,15 @@
 ## 4. 重新录制
 
 ```powershell
-# 1. 起后端与前端（两个终端）
-cd learning-planning-multi-agent
+# 1. 起后端与前端（两个终端，分别在两个分区里执行）
+cd backend
 .\.venv-run\Scripts\python.exe -B api_server.py       # http://localhost:8001
+
+cd ..\frontend
 npm run dev                                            # http://localhost:5173
 
-# 2. 抓帧（可换输入，默认就是用例 A）
+# 2. 抓帧（回到仓库根执行，可换输入，默认就是用例 A）
+cd ..
 node scripts/record-demo.mjs "我是零基础，每天能学2小时，想用视频学 Python 编程"
 
 # 3. 合成 GIF
@@ -115,7 +118,7 @@ python scripts/build_demo_gif.py --frames "$env:TEMP\demo_frames" --out assets/d
 
 几点实测经验：
 
-- **演示会写入真实反馈**（`data/feedback_records.json` 会多一条，资源评分会变）。录之前备份、录完还原，否则第二次录的时候卡片上已经带着上一轮的星级，看着不像首次使用。
+- **演示会写入真实反馈**（`backend/data/feedback_records.json` 会多一条，资源评分会变）。录之前备份、录完还原，否则第二次录的时候卡片上已经带着上一轮的星级，看着不像首次使用。
 - 无头浏览器必须用 `--headless=old`：本机 `--headless=new` 截出来是全白图。
 - GIF 用逐帧自适应调色板（`--palette frame --colors 200`）：全局单板会把浅色按钮和渐变色头压成灰块。
 - 帧间隔取录制时的真实时间差并夹在 1.8–5 秒；总时长不足 60 秒时逐帧补，不能只加在最后一帧。

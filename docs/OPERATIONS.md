@@ -23,7 +23,7 @@ langchain 0.3.30   → langchain-core>=0.3.85,<1.0.0    ← ragas 依赖的伞�
 「能跑但元数据不一致」的环境，下次任何 pip 操作都会失败。
 
 ```powershell
-cd learning-planning-multi-agent
+cd backend
 
 # 运行环境
 python -m venv .venv-run
@@ -39,7 +39,7 @@ python -m venv .venv-ragas
 | 服务 | 默认端口 | 覆盖方式 |
 |---|---|---|
 | 后端 FastAPI | 8001 | `API_PORT=8020`（也可写进 `.env`） |
-| 前端 Vite | 5173 | `npm run dev -- --port 5174` |
+| 前端 Vite | 5173 | 在 `frontend/` 下执行 `npm run dev -- --port 5174` |
 
 后端默认用 8001 而不是 8000：8000 常被本机其他服务（Docker、面板工具）占用，
 按 8000 访问会打到别的服务上，返回 404 或 HTML，容易误判成"接口挂了"。
@@ -49,7 +49,7 @@ python -m venv .venv-ragas
 
 ## 3. 环境变量
 
-放在 `learning-planning-multi-agent/.env`（由 `.env.example` 复制）：
+放在 `backend/.env`（由 `.env.example` 复制）：
 
 ```env
 DEEPSEEK_API_KEY=your_key_here
@@ -75,7 +75,7 @@ RAG_MIN_TYPES=0
 ## 4. 测试与评测命令
 
 ```powershell
-cd learning-planning-multi-agent
+cd backend
 
 # 快速套件：104 项，约 2 秒，不需要模型和向量库
 .\.venv-run\Scripts\python.exe -B -m pytest -m "not slow"

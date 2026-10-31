@@ -363,7 +363,7 @@ LeetCode 的 dense 余弦最高，但 BM25 完全没命中，融合靠第二路�
 ## 6. 复现方式
 
 ```powershell
-cd learning-planning-multi-agent
+cd backend
 
 # 1. 重建知识库（会清空并重写 chroma_db）
 python -B rebuild_knowledge_base.py --rebuild

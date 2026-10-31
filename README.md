@@ -102,7 +102,7 @@ flowchart TD
 
 ```powershell
 git clone https://github.com/1t8y/multi-agent-learning-planner.git
-cd multi-agent-learning-planner/learning-planning-multi-agent
+cd multi-agent-learning-planner/backend
 python -m venv .venv-run
 .\.venv-run\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env      # 填入 DEEPSEEK_API_KEY
@@ -112,7 +112,7 @@ Copy-Item .env.example .env      # 填入 DEEPSEEK_API_KEY
 后端起在 `http://localhost:8001`（接口文档 `/docs`）。另一个终端起前端：
 
 ```powershell
-cd multi-agent-learning-planner
+cd multi-agent-learning-planner/frontend
 npm install
 npm run dev                      # http://localhost:5173
 ```
@@ -126,23 +126,25 @@ npm run dev                      # http://localhost:5173
 
 ```text
 multi-agent/
-├── src/                            # React 前端（输入 / 结果 / 反馈 / 贡献资源）
-├── assets/demo.gif                 # 60 秒演示（真实后端录制的 17 帧）
-├── docs/                           # 架构说明、运行排障、演示脚本、开发记录
-├── scripts/                        # 接口故障回归探针 + 演示录制/合成脚本
-├── learning-planning-multi-agent/   # 后端
-│   ├── api_server.py               # FastAPI 入口（7 个接口）
-│   ├── graph_orchestrator.py       # LangGraph 编排
-│   ├── *_agent.py                  # 需求提取 / 课程规划 / 资源推荐 / 评估反馈
-│   ├── advanced_self_rag.py        # 增强 Self-RAG（过滤 → 召回 → 重排 → 质量门控）
-│   ├── vector_store_core.py        # Chroma + BM25 + RRF + 缓存
-│   ├── reranker.py / rag_quality.py# 精排（含置信度门控）与质量检测
-│   ├── bench_retrieval.py          # 十档消融与延迟基准
-│   ├── evaluate_ragas.py           # RAGAS 评测（支持 --resume 断点续跑）
-│   ├── tests/                      # pytest 119 项（113 快速 + 6 集成）
-│   ├── RETRIEVAL_EVAL.md           # 检索评测报告（含失败分析）
-│   └── data/                       # 60 条已审核资源 + 评测集与结果
-└── .github/workflows/test.yml      # CI：数据校验 + 快速单测 + 前端构建
+├── backend/                         # Python 后端：LangGraph 多 Agent + 混合检索 RAG
+│   ├── api_server.py                # FastAPI 入口（7 个接口）
+│   ├── graph_orchestrator.py        # LangGraph 编排
+│   ├── requirement_extractor.py     # 需求提取（LLM 结构化 + 白名单校验）
+│   ├── course_planner.py            # 课程规划
+│   ├── resource_recommender.py      # 资源推荐
+│   ├── assessment_feedback.py       # 评估反馈
+│   ├── advanced_self_rag.py         # 增强 Self-RAG（过滤 → 召回 → 重排 → 质量门控）
+│   ├── vector_store_core.py         # Chroma + BM25 + RRF + 缓存
+│   ├── reranker.py / rag_quality.py # 精排（含置信度门控）与质量检测
+│   ├── bench_retrieval.py           # 十档消融与延迟基准
+│   ├── evaluate_ragas.py            # RAGAS 评测（支持 --resume 断点续跑）
+│   ├── tests/                       # pytest 119 项（113 快速 + 6 集成）
+│   └── data/                        # 60 条已审核资源 + 评测集与结果
+├── frontend/                        # React + TypeScript + Vite（输入 / 结果 / 反馈 / 贡献资源）
+├── docs/                            # 架构、运维、检索评测报告、开发记录、演示脚本
+├── scripts/                         # 演示录制与 GIF 合成
+├── assets/demo.gif                  # 60 秒演示（真实后端录制的 17 帧）
+└── .github/workflows/test.yml       # CI：数据校验 + 快速单测 + 前端构建
 ```
 
 ## 评测结果
@@ -161,7 +163,7 @@ multi-agent/
 RAGAS（同一批 97 题，四指标）：`faithfulness 0.9463`、`context_recall 0.9966`、  
 `context_precision 0.9149`、`answer_relevancy 0.4932`（口径偏差见报告）。
 
-完整消融、分组表现、同题对照与局限说明：[`RETRIEVAL_EVAL.md`](learning-planning-multi-agent/RETRIEVAL_EVAL.md)。
+完整消融、分组表现、同题对照与局限说明：[`RETRIEVAL_EVAL.md`](docs/RETRIEVAL_EVAL.md)。
 
 ## 已知限制
 
@@ -177,8 +179,9 @@ RAGAS（同一批 97 题，四指标）：`faithfulness 0.9463`、`context_recal
 | 文档                                                                                                  | 内容                                   |
 | --------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                                                        | 分层架构、LangGraph 状态图、RAG 链路、接口定义、数据一致性 |
+| [docs/PROJECT_LAYOUT.md](docs/PROJECT_LAYOUT.md)                                                    | 目录职责、后端为何平铺、命令在哪执行                   |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md)                                                            | 环境搭建（两套 venv 的原因）、端口、测试与评测命令、常见问题    |
-| [learning-planning-multi-agent/RETRIEVAL_EVAL.md](learning-planning-multi-agent/RETRIEVAL_EVAL.md) | 检索评测报告：十档消融、RAGAS、失败分析               |
+| [docs/RETRIEVAL_EVAL.md](docs/RETRIEVAL_EVAL.md)                                                    | 检索评测报告：十档消融、RAGAS、失败分析               |
 | [docs/DEVLOG.md](docs/DEVLOG.md)                                                                    | 开发记录：每次改动的原因与版本里程碑                   |
 | [docs/demo-script.md](docs/demo-script.md)                                                          | 演示分镜与讲解词、三个实测用例、常见追问的回答              |
 

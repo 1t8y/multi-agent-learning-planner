@@ -1,8 +1,29 @@
 # 开发记录
 
 > 按时间倒序记录「当时为什么这么改」，不是功能清单。功能清单见 [README](../README.md)，
-> 评测数据见 [RETRIEVAL_EVAL.md](../learning-planning-multi-agent/RETRIEVAL_EVAL.md)。
+> 评测数据见 [RETRIEVAL_EVAL.md](./RETRIEVAL_EVAL.md)。
 > 文末是版本里程碑。
+>
+> 注：2026-10-31 起后端目录由 `learning-planning-multi-agent/` 改名为 `backend/`、
+> 前端移入 `frontend/`。下文早于该日期的记录保留当时的目录名。
+
+## 2026-10-31（目录结构调整：前后端分区）
+
+目标是把仓库入口理干净，不改任何业务代码。
+
+- **分了什么**：后端整体改名为 `backend/`；前端（`index.html`、`src/`、构建配置、
+  `verify-api-errors.mjs`）移入 `frontend/`；`RETRIEVAL_EVAL.md` 归到 `docs/`；
+  演示录制与 GIF 合成脚本留在根 `scripts/`。根目录只剩 `README.md` 与六个分区。
+- **为什么没拆成 `src/agent_core/` `memory/` `tools/`**：后端根目录 29 个模块全部是顶层平铺
+  绝对导入（`from config import config`、`from base_agent import BaseAgent`），
+  `config.py` 还用 `Path(__file__)` 上溯两级定位项目根。移进子包会让所有 import 断开、
+  并让路径推导偏移一级，必须改代码才能维持——这与「只调整目录、不改代码」冲突，
+  所以保留平铺，把约束写进 [PROJECT_LAYOUT.md](./PROJECT_LAYOUT.md)。
+- **路径连带修改**：CI 的 `working-directory`、`.gitignore` 中的后端前缀、
+  README 与 docs 里的 `cd` 命令、`RETRIEVAL_EVAL.md` 的链接。
+- **验证**：两套 venv 重命名后 `sys.prefix` 自愈正常；后端 `pytest` 119 项全绿；
+  `test_rag_pipeline.py` 10 个场景通过；前端 `tsc && vite build` 与
+  `npm run verify:api-errors` 通过。
 
 ## 2026-10-28（接入 git 历史、CI 真跑通）
 

@@ -63,17 +63,17 @@ dist/
 # Local vector database and model data
 chroma_db/
 chroma_db_backup*/
-learning-planning-multi-agent/chroma_db/
-learning-planning-multi-agent/chroma_db_backup*/
-learning-planning-multi-agent/data/models/
+backend/chroma_db/
+backend/chroma_db_backup*/
+backend/data/models/
 
 # User feedback and submitted resources
-learning-planning-multi-agent/data/feedback_records.json
-learning-planning-multi-agent/data/resource_submissions.json
+backend/data/feedback_records.json
+backend/data/resource_submissions.json
 
 # 本地工作区数据（Agent 记忆与内部笔记，不属于项目源码）
 .workbuddy/
-learning-planning-multi-agent/data/evaluation/ragas_runtime_dataset.jsonl
+backend/data/evaluation/ragas_runtime_dataset.jsonl
 
 # Logs and local OS files
 *.log

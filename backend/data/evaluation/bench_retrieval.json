@@ -14,7 +14,7 @@
       "BAAI/bge-small-zh-v1.5"
     ],
     "chroma_clients": [
-      "D:\\job-workspace\\project_sources\\multi-agent\\learning-planning-multi-agent\\chroma_db"
+      "D:\\job-workspace\\project_sources\\multi-agent\\backend\\chroma_db"
     ],
     "bm25_indexes": 1,
     "embedding_loads": 1,

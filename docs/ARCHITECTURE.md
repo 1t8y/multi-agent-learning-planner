@@ -88,7 +88,7 @@ dense 余弦和 BM25 分数归一化。三路信息分开留痕——原始分�
 
 **重排置信度门控**（`RAG_RERANK_MIN_CONFIDENCE`，默认关闭）：首位重排置信度低于阈值时保留融合顺序，
 但仍回填 `rerank_score` / `rerank_confidence` 给质量门控用。这样排序端与质量端解耦，
-在 97 题上把重排从 −0.02 的负收益翻成 +0.01，且不增加延迟。详见 [RETRIEVAL_EVAL.md](../learning-planning-multi-agent/RETRIEVAL_EVAL.md) 第 3.3 节。
+在 97 题上把重排从 −0.02 的负收益翻成 +0.01，且不增加延迟。详见 [RETRIEVAL_EVAL.md](./RETRIEVAL_EVAL.md) 第 3.3 节。
 
 ## 4. HTTP 接口
 
