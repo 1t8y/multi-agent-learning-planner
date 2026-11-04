@@ -38,13 +38,15 @@ def main() -> int:
     from src.memory.vector_store import init_vector_store_with_seed_data
 
     store = init_vector_store_with_seed_data()
+    from src.rag.retrieval import HybridRetriever
+    retriever = HybridRetriever(store)
     reranker = ResourceReranker()
     rows = load_rows()
 
     for qid in changed_ids():
         row = rows[qid]
         expected = set(row["expected_source_ids"])
-        candidates = store.search(row["question"], top_k=10, mode="hybrid")
+        candidates = retriever.search(row["question"], top_k=10, mode="hybrid")
         # 对全部候选打分，才能看到被挤出前 5 的那条到底被打了多少分
         scored = reranker.rerank(row["question"], candidates, top_k=len(candidates))
         scores = {item["id"]: item["rerank_score"] for item in scored}

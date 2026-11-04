@@ -308,11 +308,15 @@ class ResourceRecommenderAgent(BaseAgent):
         )
     
     def get_rag_stats(self) -> Dict:
-        """获取RAG系统统计信息"""
+        """获取RAG系统统计信息（存储分布 + 检索计数）"""
         stats = {}
-        
+
         if self._rag_initialized and self.rag_recommender and self.rag_recommender.vector_store:
-            stats["vector_store"] = self.rag_recommender.vector_store.get_stats()
+            stats["vector_store"] = {
+                **self.rag_recommender.vector_store.get_stats(),
+                "retrieval": (self.rag_recommender.retriever.get_retrieval_stats()
+                              if getattr(self.rag_recommender, "retriever", None) else {}),
+            }
         
         if self._rag_initialized and self.feedback_manager:
             stats["feedback"] = self.feedback_manager.get_feedback_stats()

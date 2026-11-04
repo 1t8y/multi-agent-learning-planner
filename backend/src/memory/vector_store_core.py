@@ -1,23 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-Chroma 向量数据库管理模块
-负责学习资源的存储、检索和管理
+Chroma 向量数据库管理模块（存储层）
 
-核心功能：
+本模块只负责「怎么存、怎么取回一批原始候选」，不负责排序与筛选决策：
 - 初始化向量数据库（Embedding 模型与 Chroma 客户端进程内共享）
-- 添加学习资源到知识库
-- Dense / Sparse / Hybrid 三种检索，Hybrid 使用标准 RRF 融合
-- 元数据过滤在 dense 与 sparse 两条链路上同时生效
-- 检索结果 LRU 缓存，写操作自动失效
-- 支持用户反馈资源入库
+- 学习资源的增删改查、评分回写
+- BM25 索引的构建与失效
+- Dense / Sparse 两路召回（各返回按自身分数排好的候选）
+- 把业务过滤条件翻译成 Chroma 的 where 语法
+
+融合（RRF）、去重、多样性约束、查询缓存、检索计数都在 src/rag/retrieval.py，
+那里才是「检索策略」。这样分层的好处是：换存储不影响排序策略，改排序也不碰数据库代码。
 """
 
 import os
 import json
 import uuid
 import threading
-import time
-from collections import OrderedDict
 from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -218,10 +217,6 @@ class VectorStoreManager:
 
     COLLECTION_NAME = "learning_resources"
     DEFAULT_DB_PATH = "./chroma_db"
-    RRF_K = 60                  # RRF 平滑常数，业界常用 60
-    RRF_DENSE_WEIGHT = 1.0      # RRF 中 dense 通路权重
-    RRF_SPARSE_WEIGHT = 1.0     # RRF 中 sparse 通路权重
-    QUERY_CACHE_SIZE = 256      # 单实例检索结果 LRU 容量
 
     def __init__(self, db_path: Optional[str] = None,
                  collection_name: Optional[str] = None):
@@ -246,12 +241,10 @@ class VectorStoreManager:
         self._bm25_metas: List[Dict] = []
         self._bm25_loaded = False
 
-        # ---- 检索缓存与统计 ----
-        self._query_cache: "OrderedDict[Tuple, List[Dict]]" = OrderedDict()
-        self._stats = {
-            "dense_calls": 0, "sparse_calls": 0, "hybrid_calls": 0,
-            "cache_hits": 0, "cache_misses": 0, "latency_ms_total": 0.0,
-        }
+        # ---- 数据版本号 ----
+        # 每次写库自增。检索层的缓存键里带着它，所以写完库旧缓存自然不命中，
+        # 存储层不需要知道缓存的存在（反过来依赖就错了）。
+        self.data_version = 0
 
         if not CHROMA_AVAILABLE:
             print("[vector_store] ChromaDB不可用，请运行: pip install chromadb")
@@ -284,7 +277,7 @@ class VectorStoreManager:
                 _bump_generation(self._store_key)
                 for key in [k for k in _BM25_CACHE if k[:2] == (self._store_key, "v1")]:
                     _BM25_CACHE.pop(key, None)
-        self._query_cache.clear()
+        self._bump_version()
 
     def _init_client(self):
         """初始化 Chroma 客户端（进程内按路径共享）"""
@@ -421,90 +414,27 @@ class VectorStoreManager:
             print(f"[vector_store] 批量添加失败: {e}")
             return []
 
+    def _bump_version(self) -> None:
+        """标记数据版本已变化。
+
+        检索层（src/rag/retrieval.py）的缓存键里带着这个版本号，
+        所以写完库之后旧缓存自然不再命中，存储层不需要反过来操作缓存对象。
+        """
+        self.data_version += 1
+
     def _invalidate(self) -> None:
-        """写操作后失效 BM25 索引与查询缓存"""
+        """文档增删后：失效 BM25 索引，并提升数据版本号让检索缓存失效"""
         with _CACHE_LOCK:
             _bump_generation(self._store_key)
             for key in [k for k in _BM25_CACHE if k[:2] == (self._store_key, "v1")]:
                 _BM25_CACHE.pop(key, None)
         self._bm25_loaded = False
         self.bm25 = None
-        self._query_cache.clear()
+        self._bump_version()
 
     # ------------------------------------------------------------------
-    # 检索
+    # 原始召回：只负责「取回候选」，融合、去重、多样性在 src/rag/retrieval.py
     # ------------------------------------------------------------------
-    def search(self,
-               query: str,
-               field: Optional[str] = None,
-               level: Optional[str] = None,
-               top_k: int = 5,
-               mode: str = "hybrid",
-               resource_types: Optional[List[str]] = None,
-               candidate_k: Optional[int] = None,
-               min_types: int = 0) -> List[Dict]:
-        """
-        增强搜索：dense | sparse | hybrid
-
-        Args:
-            query: 查询文本
-            field: 可选领域过滤
-            level: 可选难度过滤
-            top_k: 返回结果数量
-            mode: 检索模式 (dense / sparse / hybrid)
-            resource_types: 可选资源类型过滤
-            candidate_k: 每路召回数量，默认等于 top_k
-            min_types: 结果中最少覆盖的资源类型数，0 表示不做多样性约束
-
-        Returns:
-            匹配的资源列表。字段含义：
-            - similarity: dense 余弦相似度（仅 sparse 命中时为该批次归一化 BM25）
-            - bm25_score: 原始 BM25 分数
-            - fused_score: RRF 融合分数（hybrid 模式用于排序）
-            - rank_dense / rank_sparse: 两条通路各自的原始排名
-        """
-        if not self._initialized or not query:
-            return []
-
-        pool = max(int(candidate_k or top_k), top_k)
-        cache_key = (query, field, level, int(top_k), mode,
-                     tuple(sorted(resource_types or ())), pool, int(min_types))
-        cached = self._query_cache.get(cache_key)
-        if cached is not None:
-            self._stats["cache_hits"] += 1
-            self._query_cache.move_to_end(cache_key)
-            return [dict(item) for item in cached]
-        self._stats["cache_misses"] += 1
-
-        started = time.perf_counter()
-        dense_results: List[Dict] = []
-        if mode in ("dense", "hybrid"):
-            dense_results = self._dense_search(query, field, level, resource_types, pool)
-            self._stats["dense_calls"] += 1
-
-        sparse_results: List[Dict] = []
-        if mode in ("sparse", "hybrid"):
-            sparse_results = self._sparse_search(query, pool, field, level, resource_types)
-            self._stats["sparse_calls"] += 1
-
-        if mode == "hybrid":
-            self._stats["hybrid_calls"] += 1
-            results = self._rrf_merge(dense_results, sparse_results, pool)
-        elif mode == "sparse":
-            results = self._normalize_sparse(sparse_results)
-        else:
-            results = dense_results
-
-        results = self._dedupe(results)[:pool]
-        if min_types > 0:
-            results = self._diversify(results, min_types)
-        results = results[:top_k]
-
-        self._stats["latency_ms_total"] += (time.perf_counter() - started) * 1000
-        self._query_cache[cache_key] = [dict(item) for item in results]
-        while len(self._query_cache) > self.QUERY_CACHE_SIZE:
-            self._query_cache.popitem(last=False)
-        return results
 
     def _build_where(self, field: Optional[str], level: Optional[str],
                      resource_types: Optional[List[str]]) -> Dict[str, Any]:
@@ -650,81 +580,6 @@ class VectorStoreManager:
                 break
         return results
 
-    def _normalize_sparse(self, sparse_results: List[Dict]) -> List[Dict]:
-        """把 BM25 分数按批次最大值缩放到 0 到 1，保持下游相似度语义一致"""
-        if not sparse_results:
-            return []
-        top = max(item.get("bm25_score", 0.0) for item in sparse_results) or 1.0
-        return [{**item, "similarity": round(item.get("bm25_score", 0.0) / top, 5)}
-                for item in sparse_results]
-
-    def _rrf_merge(self, dense_results: List[Dict], sparse_results: List[Dict],
-                   top_k: int = 5) -> List[Dict]:
-        """
-        标准 Reciprocal Rank Fusion：score = Σ w_i / (k + rank_i)
-
-        只使用名次，不使用原始分数，因此不需要对 dense 余弦和 BM25 做归一化。
-        原始分数保存在 similarity / bm25_score 中，排序依据单独记在 fused_score。
-        """
-        fused: Dict[str, Dict[str, Any]] = {}
-        for rank, item in enumerate(dense_results, start=1):
-            doc_id = item.get("id") or f"dense-{rank}"
-            entry = fused.setdefault(doc_id, {**item, "rank_dense": rank, "rank_sparse": None})
-            entry["rrf_score"] = entry.get("rrf_score", 0.0) + \
-                self.RRF_DENSE_WEIGHT / (self.RRF_K + rank)
-
-        top_bm25 = max((item.get("bm25_score", 0.0) for item in sparse_results), default=1.0) or 1.0
-        for rank, item in enumerate(sparse_results, start=1):
-            doc_id = item.get("id") or f"sparse-{rank}"
-            entry = fused.get(doc_id)
-            if entry is None:
-                entry = {**item, "rank_dense": None, "rank_sparse": rank,
-                         "similarity": round(item.get("bm25_score", 0.0) / top_bm25, 5)}
-                fused[doc_id] = entry
-            else:
-                entry["rank_sparse"] = rank
-                entry["bm25_score"] = item.get("bm25_score")
-            entry["rrf_score"] = entry.get("rrf_score", 0.0) + \
-                self.RRF_SPARSE_WEIGHT / (self.RRF_K + rank)
-
-        merged = list(fused.values())
-        for item in merged:
-            item["fused_score"] = round(item.get("rrf_score", 0.0), 6)
-            item["similarity"] = round(float(item.get("similarity", 0.0) or 0.0), 5)
-        merged.sort(key=lambda x: (-x.get("fused_score", 0.0),
-                                   x.get("rank_dense") or 10 ** 6))
-        return merged[:top_k]
-
-    @staticmethod
-    def _dedupe(results: List[Dict]) -> List[Dict]:
-        """按 URL 去重，URL 为空时回退到标题"""
-        seen, unique = set(), []
-        for item in results:
-            key = (item.get("url") or "").strip() or (item.get("title") or "").strip()
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            unique.append(item)
-        return unique
-
-    @staticmethod
-    def _diversify(results: List[Dict], min_types: int) -> List[Dict]:
-        """在保持首位不变的前提下，让结果至少覆盖 min_types 种资源类型"""
-        if len(results) < 2:
-            return results
-        chosen, used = [], set()
-        chosen.append(results[0])
-        used.add(results[0].get("resource_type", ""))
-        for item in results[1:]:
-            rtype = item.get("resource_type", "")
-            if rtype not in used:
-                chosen.append(item)
-                used.add(rtype)
-                if len(used) >= min_types:
-                    break
-        picked = {id(x) for x in chosen}
-        chosen.extend(item for item in results if id(item) not in picked)
-        return chosen
 
     # ------------------------------------------------------------------
     # 反馈与统计
@@ -761,7 +616,8 @@ class VectorStoreManager:
             metadata["feedback_count"] = str(new_count)
 
             self.collection.update(ids=[resource_id], metadatas=[metadata])
-            self._query_cache.clear()
+            # 评分变了但文档内容没变：只需提升版本号让检索缓存失效，不必重建 BM25
+            self._bump_version()
             print(f"[vector_store] 资源评分更新: {old_rating:.1f} -> {new_rating:.1f} ({new_count}条反馈)")
             return True
 
@@ -812,7 +668,12 @@ class VectorStoreManager:
             return []
 
     def get_stats(self) -> Dict[str, Any]:
-        """获取数据库统计信息（含检索缓存命中率）"""
+        """获取知识库的资源分布统计。
+
+        只描述「库里有什么」，不含检索调用计数——
+        检索侧的命中率与延迟由 HybridRetriever.get_retrieval_stats() 提供，
+        需要完整的 /api/stats 响应时由接口层把两者合并。
+        """
         if not self._initialized:
             return {"error": "数据库未初始化"}
 
@@ -831,20 +692,12 @@ class VectorStoreManager:
                 src = r.get("source", "未知")
                 sources[src] = sources.get(src, 0) + 1
 
-            total_calls = self._stats["cache_hits"] + self._stats["cache_misses"]
             return {
                 "total_count": len(all_resources),
                 "fields": fields,
                 "types": types,
                 "levels": levels,
                 "sources": sources,
-                "retrieval": {
-                    **self._stats,
-                    "cache_hit_rate": round(self._stats["cache_hits"] / total_calls, 4)
-                    if total_calls else 0.0,
-                    "avg_latency_ms": round(
-                        self._stats["latency_ms_total"] / max(self._stats["cache_misses"], 1), 2),
-                },
             }
         except Exception as e:
             return {"error": str(e)}
@@ -984,17 +837,22 @@ def init_vector_store_with_seed_data(db_path: Optional[str] = None) -> VectorSto
 
 
 if __name__ == "__main__":
+    # 仅作手动冒烟：这里的 import 只在直接运行本文件时发生，
+    # 不构成 memory → rag 的运行时依赖（正常分层里依赖方向是 rag → memory）。
+    from src.rag.retrieval import HybridRetriever
+
     print("=" * 50)
     print("向量数据库测试")
     print("=" * 50)
 
     store = init_vector_store_with_seed_data()
+    retriever = HybridRetriever(store)
 
     print("\n数据库统计:")
     print(json.dumps(store.get_stats(), ensure_ascii=False, indent=2))
 
     print("\n搜索测试: 'Python编程入门'")
-    results = store.search("Python编程入门", field="编程", top_k=3)
+    results = retriever.search("Python编程入门", field="编程", top_k=3)
     for r in results:
         print(f"\n- {r['title']}")
         print(f"  类型: {r['resource_type']} | 相似度: {r['similarity']:.3f}")

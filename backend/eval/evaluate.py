@@ -9,6 +9,7 @@ import json
 
 from eval.bench_retrieval import format_table, load_tests, run_mode
 from src.memory.vector_store import init_vector_store_with_seed_data
+from src.rag.retrieval import HybridRetriever
 
 TOP_K = 5
 
@@ -16,12 +17,13 @@ TOP_K = 5
 def main() -> int:
     """执行三路检索对比并打印 Markdown 表格"""
     store = init_vector_store_with_seed_data()
+    retriever = HybridRetriever(store)
     rows = load_tests()
 
     runners = {
-        "dense": lambda row: store.search(row["question"], top_k=TOP_K, mode="dense"),
-        "sparse": lambda row: store.search(row["question"], top_k=TOP_K, mode="sparse"),
-        "hybrid": lambda row: store.search(row["question"], top_k=TOP_K, mode="hybrid"),
+        "dense": lambda row: retriever.search(row["question"], top_k=TOP_K, mode="dense"),
+        "sparse": lambda row: retriever.search(row["question"], top_k=TOP_K, mode="sparse"),
+        "hybrid": lambda row: retriever.search(row["question"], top_k=TOP_K, mode="hybrid"),
     }
     report = {name: run_mode(fn, rows, TOP_K) for name, fn in runners.items()}
 

@@ -32,11 +32,12 @@ backend/
 │   │   ├── assessment_feedback.py   评估打分（低分触发重生成）
 │   │   ├── graph_orchestrator.py    LangGraph 编排（节点 + 条件边）
 │   │   └── agent_coordinator.py     线程版编排（无 LangGraph 时的后备）
-│   ├── memory/            记忆与检索底座
+│   ├── memory/            存储层：怎么存、怎么取回原始候选
 │   │   ├── model_loader.py          本地模型加载（缓存优先）
-│   │   ├── vector_store_core.py     Chroma + BM25 + RRF + 缓存
+│   │   ├── vector_store_core.py     Chroma 读写 + BM25 索引 + Dense/Sparse 原始召回
 │   │   └── vector_store.py          对外统一入口
-│   ├── rag/               检索增强
+│   ├── rag/               检索策略层：怎么把候选组合成结果
+│   │   ├── retrieval.py             RRF 融合 + 去重 + 多样性 + 查询缓存（HybridRetriever）
 │   │   ├── self_rag_recommender.py  Self-RAG 主流程（改写、召回、合并、丢弃）
 │   │   ├── advanced_self_rag.py     + 元数据过滤、精排、质量门控
 │   │   ├── reranker.py              Cross-Encoder 精排与置信度门控
@@ -82,8 +83,9 @@ config / utils  →  memory / tools  →  rag  →  feedback / core  →  api
 |---|---|
 | 新增一个 Agent（新的处理步骤） | `src/core/`，继承 `base_agent.BaseAgent` |
 | 新增一种外部能力（API、命令行工具） | `src/tools/` |
-| 改检索、排序、过滤、质量门控 | `src/rag/` |
-| 改向量库、BM25、Embedding、模型加载 | `src/memory/` |
+| 改融合（RRF）、去重、多样性、查询缓存 | `src/rag/retrieval.py` |
+| 改召回策略、精排、质量门控 | `src/rag/` 其余模块 |
+| 改向量库读写、BM25 索引、Embedding、模型加载 | `src/memory/` |
 | 改评分、反馈落盘、待审核队列 | `src/feedback/` |
 | 加接口或改请求体 | `src/api/api_server.py` |
 | 加一次评测实验 | `eval/`（一次性分析放 `eval/tools/`） |

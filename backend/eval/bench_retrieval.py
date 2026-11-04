@@ -29,7 +29,7 @@ def load_tests() -> List[Dict]:
     return rows
 
 
-def build_modes(store, top_k: int, candidate_k: int,
+def build_modes(retriever, top_k: int, candidate_k: int,
                 gate: float = 0.55) -> tuple[Dict[str, Callable[[Dict], List[Dict]]], Dict[str, int]]:
     """
     构造各消融档位的检索函数，统一返回结果列表。
@@ -57,7 +57,7 @@ def build_modes(store, top_k: int, candidate_k: int,
             """跑单题：取候选 → 门控精排 → 记录这一题是否触发了门控回退。"""
             query = row["question"]
             candidates = (filtered(row, candidate_k) if "filter" in name
-                          else store.search(query, top_k=candidate_k, mode="hybrid"))
+                          else retriever.search(query, top_k=candidate_k, mode="hybrid"))
             output = gated.rerank(query, candidates, top_k=top_k)
             if gated.last_gate_fallback:
                 counters[name] = counters.get(name, 0) + 1
@@ -66,11 +66,11 @@ def build_modes(store, top_k: int, candidate_k: int,
 
     def plain(mode: str, k: int):
         """生成「只检索、不后处理」的档位函数，用于和带重排/过滤的档位做对照。"""
-        return lambda row: store.search(row["question"], top_k=k, mode=mode)
+        return lambda row: retriever.search(row["question"], top_k=k, mode=mode)
 
     def filtered(row: Dict, k: int, mode: str = "hybrid", min_types: int = 0) -> List[Dict]:
         """带元数据过滤的检索"""
-        return store.search(
+        return retriever.search(
             row["question"], top_k=k, mode=mode,
             field=row.get("topic"),
             level=LEVELS.get(row.get("difficulty", ""), None),
@@ -83,10 +83,10 @@ def build_modes(store, top_k: int, candidate_k: int,
         "sparse": plain("sparse", top_k),
         "hybrid": plain("hybrid", top_k),
         # 对照组：候选池同样放到 candidate_k 但不做重排，用于剥离「池子变大」的影响
-        "hybrid@candidate_k": lambda row: store.search(
+        "hybrid@candidate_k": lambda row: retriever.search(
             row["question"], top_k=top_k, mode="hybrid", candidate_k=candidate_k),
         "hybrid+rerank": lambda row: rerank(
-            row["question"], store.search(row["question"], top_k=candidate_k, mode="hybrid")),
+            row["question"], retriever.search(row["question"], top_k=candidate_k, mode="hybrid")),
         "hybrid+rerank+gate": make_gated("hybrid+rerank+gate"),
         "hybrid+filter": lambda row: filtered(row, top_k),
         "hybrid+filter+div": lambda row: filtered(row, top_k, min_types=2),
@@ -145,7 +145,7 @@ def format_table(report: Dict[str, Dict], top_k: int) -> str:
     return "\n".join(lines)
 
 
-def measure_cold_start(store, rows: List[Dict]) -> Dict[str, float]:
+def measure_cold_start(retriever, rows: List[Dict]) -> Dict[str, float]:
     """
     测量首个查询与稳态查询的耗时。
 
@@ -154,13 +154,13 @@ def measure_cold_start(store, rows: List[Dict]) -> Dict[str, float]:
     """
     warm_query = "Python 机器学习 教程"
     started = time.perf_counter()
-    store.search(warm_query, top_k=5, mode="hybrid", candidate_k=10)
+    retriever.search(warm_query, top_k=5, mode="hybrid", candidate_k=10)
     first = (time.perf_counter() - started) * 1000
 
     samples = []
     for row in rows[:20]:
         t0 = time.perf_counter()
-        store.search(row["question"], top_k=5, mode="hybrid", candidate_k=10)
+        retriever.search(row["question"], top_k=5, mode="hybrid", candidate_k=10)
         samples.append((time.perf_counter() - t0) * 1000)
     return {
         "first_hybrid_query_ms": round(first, 2),
@@ -185,12 +185,15 @@ def main() -> int:
 
     init_started = _time.perf_counter()
     from src.memory.vector_store import init_vector_store_with_seed_data, get_cache_stats
+    from src.rag.retrieval import HybridRetriever
 
     store = init_vector_store_with_seed_data()
+    # 所有档位共用同一个检索器，缓存行为与拆分前一致
+    retriever = HybridRetriever(store)
     init_seconds = _time.perf_counter() - init_started
 
     rows = load_tests()
-    modes, counters = build_modes(store, args.top_k, args.candidate_k, gate=args.gate_confidence)
+    modes, counters = build_modes(retriever, args.top_k, args.candidate_k, gate=args.gate_confidence)
     if args.skip_rerank:
         modes = {name: fn for name, fn in modes.items() if "rerank" not in name}
 
@@ -202,7 +205,7 @@ def main() -> int:
         if name in report:
             report[name]["metrics"]["gate_fallbacks"] = count
 
-    cold = measure_cold_start(store, rows)
+    cold = measure_cold_start(retriever, rows)
     payload = {
         "generated_at": _time.strftime("%Y-%m-%dT%H:%M:%S"),
         "kb_total": store.get_stats()["total_count"],

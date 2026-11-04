@@ -9,6 +9,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from src.memory.vector_store_core import VectorStoreManager
+from src.rag.retrieval import HybridRetriever
 
 _SEQ = itertools.count()
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+|[\u4e00-\u9fff]")
@@ -145,9 +146,15 @@ def make_store(resources: List[Dict[str, Any]]) -> VectorStoreManager:
     store._bm25_loaded = False
     from collections import OrderedDict
 
-    store._query_cache = OrderedDict()
-    store._stats = {
-        "dense_calls": 0, "sparse_calls": 0, "hybrid_calls": 0,
-        "cache_hits": 0, "cache_misses": 0, "latency_ms_total": 0.0,
-    }
+    # 数据版本号：检索器缓存键带它，写库后自增即可让旧缓存失效
+    store.data_version = 0
     return store
+
+
+def make_retriever(resources: List[Dict[str, Any]]) -> HybridRetriever:
+    """构造绑定假集合的检索器，供检索链路单测使用。
+
+    检索策略（融合、去重、多样性、缓存）都在 HybridRetriever 上，
+    所以测检索行为必须拿到检索器，而不是只拿存储层。
+    """
+    return HybridRetriever(make_store(resources))

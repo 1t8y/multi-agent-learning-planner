@@ -22,6 +22,8 @@ from datetime import datetime
 
 try:
     from src.memory.vector_store import VectorStoreManager, init_vector_store_with_seed_data
+    # 检索策略层：双路召回 + RRF 融合 + 去重 + 多样性，由它持有存储层
+    from src.rag.retrieval import HybridRetriever
     VECTOR_STORE_AVAILABLE = True
 except ImportError as e:
     VECTOR_STORE_AVAILABLE = False
@@ -78,7 +80,8 @@ class SelfRAGRecommender:
         构造时不碰模型与数据库：这样单元测试可以直接实例化，
         不需要本地 Embedding 模型也能测合并、丢弃、改写等纯逻辑。
         """
-        self.vector_store = None
+        self.vector_store = None      # 存储层句柄：增删资源、查统计时用
+        self.retriever = None         # 检索策略层：查询时用（双路召回 + 融合）
         self.web_search = None
         self._initialized = False
 
@@ -99,6 +102,8 @@ class SelfRAGRecommender:
         if VECTOR_STORE_AVAILABLE:
             try:
                 self.vector_store = init_vector_store_with_seed_data()
+                # 同一个存储层实例交给检索器，避免两处各建一个 Chroma 客户端
+                self.retriever = HybridRetriever(self.vector_store)
                 print(f"[SelfRAG] 向量数据库已连接")
             except Exception as e:
                 print(f"[SelfRAG] 向量数据库初始化失败: {e}")
@@ -157,7 +162,7 @@ class SelfRAGRecommender:
         print(f"[SelfRAG] 知识库检索: {query} (领域: {field})")
         
         try:
-            results = self.vector_store.search(
+            results = self.retriever.search(
                 query=query,
                 field=field if field != "其他" else None,
                 top_k=self.MAX_KB_RESULTS,

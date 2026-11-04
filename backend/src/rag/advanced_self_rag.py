@@ -86,7 +86,7 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
             {"field": None, "level": None, "resource_types": None},
         ]
         for filters in attempts:
-            results = self.vector_store.search(
+            results = self.retriever.search(
                 query=query, field=filters["field"], level=filters["level"],
                 top_k=self.CANDIDATE_K, mode="hybrid",
                 resource_types=filters["resource_types"],
@@ -98,7 +98,7 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
 
     def _search_kb(self, state: RAGState) -> RAGState:
         """输入 RAG 状态，执行过滤检索、候选重排和质量检测"""
-        if not self.vector_store or not self.vector_store._initialized:
+        if not self.retriever or not self.retriever.ready:
             state.kb_results, state.kb_relevance_score = [], 0.0
             return state
         query = self._build_search_query(state)

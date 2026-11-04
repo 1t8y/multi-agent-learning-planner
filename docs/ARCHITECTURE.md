@@ -74,17 +74,24 @@ extract ──► plan ──► recommend ──┐
 | 组件 | 文件 | 作用 |
 |---|---|---|
 | 增强 Self-RAG | `src/rag/advanced_self_rag.py` | 串联过滤、召回、重排、质量门控与改写 |
-| 混合检索核心 | `src/memory/vector_store_core.py` | ChromaDB + BM25 + RRF + 元数据过滤 + LRU 缓存 |
+| 存储与原始召回 | `src/memory/vector_store_core.py` | Chroma 读写 + BM25 索引 + Dense/Sparse 各自的候选召回 |
+| 融合与排序策略 | `src/rag/retrieval.py` | RRF 融合 + 去重 + 多样性约束 + 查询缓存（`HybridRetriever`） |
 | Cross-Encoder | `src/rag/reranker.py` | `BAAI/bge-reranker-base` 精排，支持置信度门控 |
 | 质量检测 | `src/rag/rag_quality.py` | 输出质量分/等级/信号，决定是否改写重试 |
 | 模型加载 | `src/memory/model_loader.py` | Embedding / Reranker 进程内单例，本地缓存优先 |
 | 检索指标 | `src/utils/retrieval_metrics.py` | Hit@k / MRR@k / P@k，支持一题多答案 |
+
+> **存储与策略的分界**：`memory` 只回答「怎么存、怎么取回一批原始候选」，
+> `rag/retrieval.py` 回答「怎么把这些候选组合成最终结果」。
+> 换存储（比如换掉 Chroma）不必动排序策略，调排序策略也不必碰数据库代码。
 
 模型：Embedding `BAAI/bge-small-zh-v1.5`，重排 `BAAI/bge-reranker-base`，均在本地推理。
 
 **RRF 用标准倒数排名公式** `score = Σ wᵢ / (k + rankᵢ)`：只看名次，不看分数分布，因此不需要把
 dense 余弦和 BM25 分数归一化。三路信息分开留痕——原始分在 `similarity` / `bm25_score`，
 融合分在 `fused_score`，各路名次在 `rank_dense` / `rank_sparse`，便于排查排序问题。
+公式实现在 `src/rag/retrieval.py` 的 `rrf_merge()`，参数 `RRF_K` / `RRF_DENSE_WEIGHT` /
+`RRF_SPARSE_WEIGHT` 也在该模块顶部，默认 60 / 1.0 / 1.0。
 
 **重排置信度门控**（`RAG_RERANK_MIN_CONFIDENCE`，默认关闭）：首位重排置信度低于阈值时保留融合顺序，
 但仍回填 `rerank_score` / `rerank_confidence` 给质量门控用。这样排序端与质量端解耦，

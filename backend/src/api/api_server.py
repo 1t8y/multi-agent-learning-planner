@@ -237,11 +237,19 @@ if FASTAPI_AVAILABLE:
     
     @app.get("/api/stats")
     async def get_stats():
-        """获取系统统计"""
+        """获取系统统计。
+
+        存储分布来自 VectorStoreManager，检索计数来自 HybridRetriever，
+        这里合并成与重构前完全一致的响应结构（vector_store.retrieval）。
+        """
         stats = {}
-        
+
         if rag_recommender and rag_recommender.vector_store:
-            stats["vector_store"] = rag_recommender.vector_store.get_stats()
+            stats["vector_store"] = {
+                **rag_recommender.vector_store.get_stats(),
+                "retrieval": (rag_recommender.retriever.get_retrieval_stats()
+                              if getattr(rag_recommender, "retriever", None) else {}),
+            }
         
         if feedback_manager:
             stats["feedback"] = feedback_manager.get_feedback_stats()
@@ -297,7 +305,8 @@ if FASTAPI_AVAILABLE:
                 "fields": store_stats.get("fields", {}),
                 "levels": store_stats.get("levels", {}),
             }
-            payload["retrieval"] = store_stats.get("retrieval", {})
+            payload["retrieval"] = (rag_recommender.retriever.get_retrieval_stats()
+                                    if getattr(rag_recommender, "retriever", None) else {})
         return payload
 
 

@@ -15,6 +15,7 @@ from src.core.graph_orchestrator import LANGGRAPH_AVAILABLE
 from src.core.requirement_extractor import RequirementExtractorAgent
 from src.core.resource_recommender import ResourceRecommenderAgent
 from src.memory.vector_store import VectorStoreManager
+from src.rag.retrieval import HybridRetriever
 from src.rag.self_rag_recommender import init_self_rag
 
 TESTS_PASSED = 0
@@ -75,8 +76,9 @@ def check_assessment_validation():
 def check_vector_store():
     """向量库能初始化，并跑通一次稠密检索。"""
     store = VectorStoreManager()
+    retriever = HybridRetriever(store)
     print(f"    total={store.get_stats().get('total_count', 0)}")
-    results = store.search("Python", mode="dense", top_k=3)
+    results = retriever.search("Python", mode="dense", top_k=3)
     print(f"    results={len(results)}")
 
 

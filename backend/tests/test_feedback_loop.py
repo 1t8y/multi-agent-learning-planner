@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from tests.fakes import make_resource, make_store
+from tests.fakes import make_resource, make_retriever, make_store
 
 
 def _resources() -> list[dict]:
@@ -17,8 +17,8 @@ def _resources() -> list[dict]:
 
 def test_search_result_carries_feedback_count():
     """检索结果必须带 feedback_count，否则卡片刷新后无法展示反馈条数"""
-    store = make_store(_resources())
-    results = store.search("Python 教程", top_k=2, mode="dense")
+    retriever = make_retriever(_resources())
+    results = retriever.search("Python 教程", top_k=2, mode="dense")
     assert results
     assert all("feedback_count" in item for item in results)
     assert all(isinstance(item["feedback_count"], int) for item in results)

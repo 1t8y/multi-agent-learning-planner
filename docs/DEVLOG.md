@@ -7,6 +7,29 @@
 > 注：2026-10-31 起后端目录由 `learning-planning-multi-agent/` 改名为 `backend/`、
 > 前端移入 `frontend/`。下文早于该日期的记录保留当时的目录名。
 
+## 2026-11-04（检索策略从 memory 抽到 rag/retrieval.py）
+
+起因：RRF 融合属于 RAG 的检索环节，却放在 `memory/` 里，概念上说不通；
+`vector_store_core.py` 也因此长到 1001 行，一个类同时管数据库和排序策略。
+
+- **重新划分的界**：`memory` 只回答「怎么存、怎么取回一批原始候选」；
+  `rag/retrieval.py` 回答「怎么把候选组合成最终结果」。
+  换存储不影响排序策略，调排序策略不碰数据库代码。
+- **搬走**：`search()` 的三路分派、`_rrf_merge`、`_dedupe`、`_diversify`、
+  `_normalize_sparse`、查询缓存与检索计数 → `HybridRetriever`，
+  同时把四个算法改成模块级纯函数（`rrf_merge` / `dedupe` / `diversify` / `normalize_sparse`），
+  测试可以直接测算法而不必先造一个假向量库。
+- **留在 memory**：Chroma 读写、BM25 索引维护、`_build_where`（Chroma 语法适配）、
+  `_dense_search` / `_sparse_search` 两个原始召回。
+- **缓存失效改成「数据版本号」**：写库时 `data_version += 1`，检索器的缓存键带上它，
+  旧条目自然不命中。好处是存储层不必反过来操作缓存对象（否则依赖方向就反了）。
+  评分回写只 bump 版本、不重建 BM25，避免一次反馈引发全量索引重建。
+- **统计拆两份**：`store.get_stats()` 只报资源分布，`retriever.get_retrieval_stats()`
+  报命中率与延迟，`/api/stats` 与 `/api/health` 合并后输出——**响应字段与重构前完全一致**。
+- **验证**：pytest 119 全绿（数量未变）；`eval.test_rag_pipeline` 10/10；
+  十档消融指标逐项一致（0.8454 / 0.8866 / 0.9072 / 0.9175 / 0.9691，MRR 全同）；
+  真实 `POST /api/plan` 200 / 17.1s；`/api/stats` 的 `hybrid_calls` 随请求从 0 涨到 1。
+
 ## 2026-10-31（后端分层重构 + 全量中文注释）
 
 上一轮受「只改目录不改代码」约束，后端 29 个模块只能平铺。这次允许改代码，

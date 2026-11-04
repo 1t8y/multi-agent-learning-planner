@@ -33,15 +33,16 @@ def main() -> int:
     """跑一次全量打分，然后用离线复算评估各阈值"""
     from src.rag.reranker import ResourceReranker
     from src.memory.vector_store import init_vector_store_with_seed_data
+    from src.rag.retrieval import HybridRetriever
 
-    store = init_vector_store_with_seed_data()
+    retriever = HybridRetriever(init_vector_store_with_seed_data())
     reranker = ResourceReranker()
     rows = [json.loads(line) for line in TESTSET.read_text(encoding="utf-8").splitlines() if line.strip()]
 
     samples = []
     for row in rows:
         expected = set(row["expected_source_ids"])
-        candidates = store.search(row["question"], top_k=CANDIDATE_K, mode="hybrid")
+        candidates = retriever.search(row["question"], top_k=CANDIDATE_K, mode="hybrid")
         scored = reranker.rerank(row["question"], candidates, top_k=len(candidates))
         fused_ids = [c["id"] for c in candidates]
         rerank_ids = [s["id"] for s in scored]

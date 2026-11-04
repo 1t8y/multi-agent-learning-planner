@@ -18,9 +18,9 @@ def load_tests(path: Path | None = None) -> list[dict]:
     if any(row.get("review_status") != "approved" for row in rows):
         raise ValueError("测试集中存在未审核题目")
     return rows
-def search_row(store, row: dict, top_k: int, mode: str) -> tuple[dict, dict]:
-    """输入向量库和单题，返回 RAGAS 样本与排名详情"""
-    items = store.search(row["question"], top_k=top_k, mode=mode)
+def search_row(retriever, row: dict, top_k: int, mode: str) -> tuple[dict, dict]:
+    """输入检索器与单题，返回 RAGAS 样本与排名详情"""
+    items = retriever.search(row["question"], top_k=top_k, mode=mode)
     ids = [item.get("id", "") for item in items]
     expected = row["expected_source_ids"]
     rank = rank_of_first_hit(ids, expected)
@@ -129,11 +129,12 @@ def main() -> int:
                         help="只补跑 --output 文件中存在缺失指标的题目，并回填原文件")
     args = parser.parse_args()
     from src.memory.vector_store import init_vector_store_with_seed_data
-    store = init_vector_store_with_seed_data()
+    from src.rag.retrieval import HybridRetriever
+    retriever = HybridRetriever(init_vector_store_with_seed_data())
     rows = load_tests(args.testset)
     if args.limit > 0:
         rows = rows[:args.limit]
-    pairs = [search_row(store, row, args.top_k, args.mode) for row in rows]
+    pairs = [search_row(retriever, row, args.top_k, args.mode) for row in rows]
     samples, details = zip(*pairs)
     print(json.dumps({"total": len(rows), **summarize(list(details), args.top_k)}, ensure_ascii=False, indent=2))
     if args.resume:
