@@ -2,18 +2,21 @@
 # 功能：验证用「双路排名共识」替代 rerank_confidence 后，质量门控能否维持
 # 输入：test_rag_pipeline 的 10 个场景
 # 输出：控制台对比表（不修改生产代码）
+# 注意：这是 2026-11-12 门控重构前的历史实验，现行门控规则见 docs/ARCHITECTURE.md
 
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
-ROOT = BACKEND_ROOT  # 后端根目录，统一见 src/paths.py
+# 后端根目录统一由 src.paths 提供；`python -m` 在 backend/ 下运行时可直接导入。
+# 原来把 ROOT = BACKEND_ROOT 写在 import 之前会直接 NameError，实验链路等于没跑过。
+from src.paths import BACKEND_ROOT
+
+ROOT = BACKEND_ROOT
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.rag.rag_quality import RAGQualityChecker  # noqa: E402
-from src.paths import BACKEND_ROOT
 from eval.test_rag_pipeline import CASES  # noqa: E402
 
 
@@ -46,6 +49,9 @@ def main() -> int:
 
     recommender = AdvancedSelfRAGRecommender()
     recommender.reranker.enabled = False
+    # 历史实验只比较质量信号：关掉 RRF 前置门槛，也不让实验产生外部联网请求
+    recommender.MIN_DENSE_SIMILARITY = None
+    recommender.web_search = None
 
     print("\n| 场景 | 期望资源 | 检索首位 | 旧信号(max rerank) | 新信号(名次共识) |")
     print("|---|---|---|---:|---:|")

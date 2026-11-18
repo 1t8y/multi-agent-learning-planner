@@ -51,6 +51,7 @@ class RAGState:
     
     web_results: List[Dict] = dataclass_field(default_factory=list)
     web_search_count: int = 0
+    web_error: str = ""          # 联网兜底不可用/失败的原因，透传到 rag_info
     
     rewritten_query: str = ""
     rewrite_count: int = 0
@@ -111,7 +112,7 @@ class SelfRAGRecommender:
         if WEB_SEARCH_AVAILABLE:
             try:
                 self.web_search = init_web_search()
-                print(f"[SelfRAG] 网络搜索服务已连接")
+                print(f"[SelfRAG] 网络搜索服务状态: {self.web_search.status()}")
             except Exception as e:
                 print(f"[SelfRAG] 网络搜索初始化失败: {e}")
         
@@ -289,30 +290,36 @@ class SelfRAGRecommender:
         return state
     
     def _search_web(self, state: RAGState) -> RAGState:
-        """网络搜索补充资源"""
+        """网络搜索补充资源；不可用或失败时记录明确原因，不静默吞掉空结果。"""
         if not self.web_search or not self.web_search.is_available():
-            print("[SelfRAG] 网络搜索不可用，跳过")
+            status_fn = getattr(self.web_search, "status", None)
+            status = status_fn() if callable(status_fn) else {}
+            state.web_error = status.get("reason") or "网络搜索模块未加载或已被禁用"
+            print(f"[SelfRAG] 网络搜索不可用: {state.web_error}")
             state.web_results = []
             return state
-        
+
         query = self._build_search_query(state)
         print(f"[SelfRAG] 网络搜索: {query}")
-        
+
         try:
             results = self.web_search.search_learning_resources(
                 learning_objective=state.learning_objective,
                 current_foundation=state.current_foundation,
                 max_results=self.MAX_WEB_RESULTS
             )
-            
+
             state.web_results = results
             state.web_search_count += 1
-            
+            state.web_error = ""
+
             print(f"[SelfRAG] 网络搜索返回 {len(results)} 个资源")
         except Exception as e:
-            print(f"[SelfRAG] 网络搜索失败: {e}")
+            # WebSearchError 会带上具体通道与原因，交给上层继续走 LLM 兜底
+            state.web_error = str(e)
             state.web_results = []
-        
+            print(f"[SelfRAG] 网络搜索失败: {state.web_error}")
+
         return state
     
     def _merge_and_select(self, state: RAGState) -> RAGState:
@@ -323,6 +330,9 @@ class SelfRAGRecommender:
 
         for kb in state.kb_results:
             sim = kb.get("similarity", 0)
+            # 相似度既要参与比较又要格式化成两位小数，脏数据（None/字符串）先归一化
+            if not isinstance(sim, (int, float)) or isinstance(sim, bool):
+                sim = 0
             if sim < self.MIN_KB_SIMILARITY:
                 kb_discarded += 1
                 continue  # 丢弃不相关的结果
@@ -433,12 +443,16 @@ class SelfRAGRecommender:
         
         state = self._merge_and_select(state)
         
+        status_fn = getattr(self.web_search, "status", None)
+
         return {
             "resources": state.final_resources,
             "source_info": state.source_info,
             "kb_relevance": state.kb_relevance_score,
             "rewrite_count": state.rewrite_count,
-            "used_web_search": len(state.web_results) > 0
+            "used_web_search": len(state.web_results) > 0,
+            "web_error": state.web_error,
+            "web_search_status": status_fn() if callable(status_fn) else {},
         }
 
 

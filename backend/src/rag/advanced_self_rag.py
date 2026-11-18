@@ -22,6 +22,9 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
         self.CANDIDATE_K = int(rag.get("candidate_k", 10))
         self.TOP_K = int(rag.get("top_k", 5))
         self.MIN_TYPES = int(rag.get("min_types", 0))
+        # RRF 融合前的绝对门槛：语义完全没命中时不让 BM25 通用词凑出候选
+        self.MIN_DENSE_SIMILARITY = float(rag.get("rrf_min_dense_similarity", 0.25))
+        self.MIN_BM25_SCORE = float(rag.get("rrf_min_bm25_score", 1.0))
         self.reranker = ResourceReranker(
             model_name=rag.get("rerank_model", "BAAI/bge-reranker-base"),
             enabled=bool(rag.get("rerank_enabled", True)),
@@ -91,9 +94,15 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
                 top_k=self.CANDIDATE_K, mode="hybrid",
                 resource_types=filters["resource_types"],
                 min_types=self.MIN_TYPES,
+                min_dense_similarity=self.MIN_DENSE_SIMILARITY,
+                min_bm25_score=self.MIN_BM25_SCORE,
             )
             if results:
                 return results, filters
+            if getattr(self.retriever, "last_no_hit_reason", ""):
+                # dense 侧绝对没命中：放宽 where 过滤不会凭空变出更相关的候选，
+                # 直接停止降级，省掉后面几轮无意义的双路检索。
+                break
         return [], attempts[0]
 
     def _search_kb(self, state: RAGState) -> RAGState:
@@ -107,9 +116,9 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
         resource_types = self._map_resource_types(getattr(state, "learning_preference", None))
         candidates, filters = self._search_candidates(query, field if field != "其他" else None, level, resource_types)
         reranked = self.reranker.rerank(query, candidates, self.TOP_K)
-        for item in reranked:
-            item["vector_similarity"] = item.get("similarity", 0)
-            item["similarity"] = max(item.get("similarity", 0), item.get("rerank_confidence", 0))
+        # 不再用 sigmoid 置信度覆盖 similarity：旧写法把真实 cosine 0.05 伪造成 0.54，
+        # 让 MIN_KB_SIMILARITY 过滤失效、前端相似度变成假值。
+        # dense_similarity 由检索层标注，是门控唯一的绝对语义信号。
         report = self.quality_checker.evaluate(
             reranked, field=filters["field"], level=filters["level"],
             resource_types=filters["resource_types"],
@@ -119,23 +128,38 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
         state.kb_search_count += 1
         state.kb_relevance_score = report["score"]
         state.quality = report
+        state.decision = report["decision"]
+        state.no_hit_reason = getattr(self.retriever, "last_no_hit_reason", "")
         state.candidate_count = len(candidates)
         state.rerank_used = self.reranker.status()["available"]
         state.filters = filters
         state.search_query = query
-        print(f"[AdvancedRAG] 候选={len(candidates)} 重排={len(reranked)} 质量={report['grade']} 分数={report['score']}")
+        signals = report.get("signals", {})
+        print(f"[AdvancedRAG] 候选={len(candidates)} 重排={len(reranked)} "
+              f"质量={report['grade']} 分数={report['score']} 决策={report['decision']} "
+              f"cos={signals.get('top_dense_similarity')} logit={signals.get('top_rerank_logit')}"
+              + (f" 跳过融合={state.no_hit_reason}" if state.no_hit_reason else ""))
         return state
 
     def _evaluate_results(self, state: RAGState, use_llm: bool = False) -> str:
-        """输入 RAG 状态，根据质量报告决定是否足够、改写或回退"""
+        """输入 RAG 状态，按质量报告的 decision 决定通过、改写或直接联网。
+
+        web     两路绝对信号同时低于硬线（或 RRF 跳过融合导致无候选）
+                → 知识库无覆盖，跳过改写直接联网；
+        rewrite 单路偏弱 / 总分未过线 → 改写查询，达到上限后联网；
+        pass    两路都够且总分达标 → 直接推荐。
+        """
         if not state.kb_results:
+            state.decision = "web"
             return "kb_empty"
         report = getattr(state, "quality", None) or self.quality_checker.evaluate(state.kb_results)
         state.quality = report
         state.kb_relevance_score = report["score"]
-        if report["passed"]:
+        decision = report.get("decision", "pass" if report["passed"] else "rewrite")
+        state.decision = decision
+        if decision == "pass" and report["passed"]:
             return "sufficient"
-        if state.rewrite_count >= self.MAX_REWRITE_TIMES:
+        if decision == "web" or state.rewrite_count >= self.MAX_REWRITE_TIMES:
             return "kb_empty"
         return "insufficient"
 
@@ -153,14 +177,23 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
 
     def _attach_scores(self, state: RAGState) -> None:
         """把相似度和重排分数附加到最终资源对象"""
-        scores = {item.get("title", ""): item for item in state.kb_results}
+        # 优先按 id 精确匹配：只按标题建索引时，同名不同来源的资源会互相覆盖，
+        # 把已透传给前端的 id 改成另一条资源，后续反馈就会写到错误的资源上。
+        by_id = {item.get("id"): item for item in state.kb_results
+                 if isinstance(item, dict) and item.get("id")}
+        by_title = {item.get("title", ""): item for item in state.kb_results
+                    if isinstance(item, dict)}
         for rank, resource in enumerate(state.final_resources, start=1):
-            source = scores.get(resource.get("title", ""), {})
+            source = (by_id.get(resource.get("id"))
+                      or by_title.get(resource.get("title", ""), {}))
             resource.update({
-                "id": source.get("id", ""), "rank": rank,
+                # 已透传的 id 不能被覆盖；找不到来源时仍给空串，保持原有输出结构
+                "id": resource.get("id") or source.get("id", ""),
+                "rank": rank,
                 "similarity": source.get("similarity", 0),
                 "rerank_score": source.get("rerank_score"),
                 "rerank_confidence": source.get("rerank_confidence"),
+                "dense_similarity": source.get("dense_similarity"),
             })
 
     def recommend(self, learning_objective: str, current_foundation: str = "零基础",
@@ -172,6 +205,7 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
         state.time_expectation = time_expectation
         state.quality, state.candidate_count = {}, 0
         state.rerank_used, state.filters, state.search_query = False, {}, ""
+        state.decision, state.no_hit_reason = "pass", ""
         state = self._search_kb(state)
         decision = self._evaluate_results(state)
         while decision == "insufficient":
@@ -179,9 +213,18 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
             state = self._search_kb(state)
             decision = self._evaluate_results(state)
         if decision == "kb_empty":
+            # 硬线判定为「知识库无覆盖」时，不能把那批不相关 KB 结果混进最终推荐。
+            # 改写次数耗尽的情况则保留 KB 结果，让联网资源作为补充。
+            if getattr(state, "decision", "") == "web":
+                state.kb_results = []
+                print(f"[AdvancedRAG] 判定知识库无覆盖，跳过改写直接联网"
+                      + (f"（{state.no_hit_reason}）" if state.no_hit_reason else ""))
             state = self._search_web(state)
         state = self._merge_and_select(state)
         self._attach_scores(state)
+        status_fn = getattr(self.web_search, "status", None)
+        web_status = status_fn() if callable(status_fn) else {}
+
         result = {
             "resources": state.final_resources,
             "source_info": state.source_info,
@@ -193,6 +236,10 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
             "candidate_count": state.candidate_count,
             "filters": state.filters,
             "search_query": state.search_query,
+            "web_error": state.web_error,
+            "web_search_status": web_status,
+            "decision": state.decision,
+            "no_hit_reason": state.no_hit_reason,
         }
         result["rag_info"] = {
             "source_info": state.source_info,
@@ -204,5 +251,9 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
             "candidate_count": state.candidate_count,
             "filters": state.filters,
             "search_query": state.search_query,
+            "web_error": state.web_error,
+            "web_search_status": web_status,
+            "decision": state.decision,
+            "no_hit_reason": state.no_hit_reason,
         }
         return result

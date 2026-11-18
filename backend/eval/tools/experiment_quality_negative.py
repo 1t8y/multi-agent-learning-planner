@@ -2,19 +2,24 @@
 # 功能：验证名次共识质量信号在知识库外查询上的区分度（不能是恒高分）
 # 输入：6 个知识库覆盖不到的查询
 # 输出：控制台对比表
+# 注意：这是 2026-11-12 门控重构前的历史实验，现行门控规则见 docs/ARCHITECTURE.md
 
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
-ROOT = BACKEND_ROOT  # 后端根目录，统一见 src/paths.py
+# 后端根目录统一由 src.paths 提供；实验脚本按约定用 `python -m` 在 backend/ 下运行。
+from src.paths import BACKEND_ROOT
+
+ROOT = BACKEND_ROOT
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+TOOLS_DIR = str(ROOT / "eval" / "tools")
+if TOOLS_DIR not in sys.path:
+    sys.path.insert(0, TOOLS_DIR)
 
 from experiment_quality_signal import RankConsensusQuality  # noqa: E402
 from src.rag.rag_quality import RAGQualityChecker  # noqa: E402
-from src.paths import BACKEND_ROOT
 
 OUT_OF_SCOPE = [
     "想学韩语入门，有推荐的视频课程吗",
@@ -35,6 +40,9 @@ def main() -> int:
 
     recommender = AdvancedSelfRAGRecommender()
     recommender.reranker.enabled = False
+    # 历史实验只比较质量信号：关掉 RRF 前置门槛，也不让实验产生外部联网请求
+    recommender.MIN_DENSE_SIMILARITY = None
+    recommender.web_search = None
 
     print("\n(重排已关闭，只比较质量信号本身)\n")
     print("| 类型 | 查询 | 候选数 | 旧信号(similarity) | 新信号(名次共识) |")

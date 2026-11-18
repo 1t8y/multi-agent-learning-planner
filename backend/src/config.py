@@ -5,6 +5,8 @@
 
 import os
 import json
+import threading
+from copy import deepcopy
 from typing import Dict, Optional, Any
 from dotenv import load_dotenv
 
@@ -13,6 +15,7 @@ class ConfigManager:
     """配置管理器，负责加载和管理所有配置"""
     
     _instance = None
+    _instance_lock = threading.Lock()
     _config: Dict[str, Any] = {}
     
     def __new__(cls, *args, **kwargs):
@@ -22,8 +25,12 @@ class ConfigManager:
         环境变量与 JSON 配置只解析一次。
         """
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._init_config()
+            # 双重检查：并发首次访问时不能让两个线程各自初始化、互相覆盖
+            with cls._instance_lock:
+                if cls._instance is None:
+                    instance = super().__new__(cls)
+                    instance._init_config()
+                    cls._instance = instance
         return cls._instance
     
     def _init_config(self):
@@ -50,7 +57,11 @@ class ConfigManager:
             'deepseek_api_key': os.getenv('DEEPSEEK_API_KEY', ''),
             'hermes_api_key': os.getenv('HERMES_API_KEY', ''),
             'api_base_url': os.getenv('API_BASE_URL', 'https://api.deepseek.com/v1/chat/completions'),
-            'hermes_api_base': os.getenv('HERMES_API_BASE', 'http://127.0.0.1:8642')
+            'hermes_api_base': os.getenv('HERMES_API_BASE', 'http://127.0.0.1:8642'),
+            # 联网兜底：填了 key 且开关打开时才真正发起外部请求
+            'tavily_api_key': os.getenv('TAVILY_API_KEY', ''),
+            'web_search_enabled': os.getenv('WEB_SEARCH_ENABLED', 'true').strip().lower()
+                                  not in ('0', 'false', 'no', 'off'),
         }
     
     def _load_defaults(self):
@@ -73,6 +84,17 @@ class ConfigManager:
                 # 首位候选重排置信度低于该值时保留融合顺序（0 表示不做门控）
                 'rerank_min_confidence': float(os.getenv('RAG_RERANK_MIN_CONFIDENCE', '0')),
                 'quality_threshold': float(os.getenv('RAG_QUALITY_THRESHOLD', '0.55')),
+                # ── 库外查询识别（2026-11-12 标定：库内 cosine 0.2944~0.5944 /
+                #    logit 0.800~0.992；库外 cosine -0.0631~0.2184 / logit 0.004~0.281）──
+                # RRF 融合前的绝对门槛：dense 侧低于此值不参与融合；全灭则跳过融合返回空
+                'rrf_min_dense_similarity': float(os.getenv('RAG_RRF_MIN_DENSE_SIMILARITY', '0.25')),
+                'rrf_min_bm25_score': float(os.getenv('RAG_RRF_MIN_BM25_SCORE', '1.0')),
+                # 硬线：cosine 与 logit 同时低于 → 知识库无覆盖，跳过重写直接联网
+                'hard_cosine': float(os.getenv('RAG_HARD_COSINE', '0.25')),
+                'hard_logit': float(os.getenv('RAG_HARD_LOGIT', '0.5')),
+                # 软线：任一路偏低 → 改写查询重试，达到次数上限后联网
+                'soft_cosine': float(os.getenv('RAG_SOFT_COSINE', '0.28')),
+                'soft_logit': float(os.getenv('RAG_SOFT_LOGIT', '0.65')),
                 # 结果中最少覆盖的资源类型数，0 表示关闭多样性约束
                 'min_types': int(os.getenv('RAG_MIN_TYPES', '0')),
                 'regeneration_threshold': float(os.getenv('REGENERATION_THRESHOLD', '6.0')),
@@ -81,8 +103,8 @@ class ConfigManager:
         }
 
     def get_defaults(self) -> Dict[str, Any]:
-        """获取所有默认配置"""
-        return self._config.get('defaults', {})
+        """获取所有默认配置（返回副本，避免调用方改动污染全局单例）"""
+        return deepcopy(self._config.get('defaults', {}))
     
     def _load_json_config(self):
         """加载JSON配置文件"""
@@ -128,6 +150,13 @@ class ConfigManager:
         """获取API基础URL"""
         return self.get('env.api_base_url', 'https://api.deepseek.com/v1/chat/completions')
     
+    def get_web_search_config(self) -> Dict[str, Any]:
+        """获取联网兜底配置（不返回密钥本身，只返回是否已配置）"""
+        return {
+            'enabled': self.get('env.web_search_enabled', True),
+            'api_key_configured': bool(self.get('env.tavily_api_key', '')),
+        }
+
     def get_model_config(self) -> Dict[str, Any]:
         """获取模型配置"""
         return {
@@ -180,6 +209,9 @@ class ConfigManager:
         print(f"模型: {self.get('defaults.model')}")
         print(f"最大Token: {self.get('defaults.max_tokens')}")
         print(f"温度: {self.get('defaults.temperature')}")
+        web = self.get_web_search_config()
+        print(f"联网兜底: {'已启用' if web['enabled'] and web['api_key_configured'] else '未启用'}"
+              f" (开关={web['enabled']}, Key已配置={web['api_key_configured']})")
         print(f"Hermes CLI路径: {self.get('cli_path', 'hermes')}")
         print("="*60 + "\n")
 

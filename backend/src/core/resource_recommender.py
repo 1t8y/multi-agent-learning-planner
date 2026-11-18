@@ -105,12 +105,39 @@ class ResourceRecommenderAgent(BaseAgent):
   ]
 }"""
     
-    def _get_default_result(self) -> Dict:
-        """LLM 调用失败或解析失败时的兜底返回值：空资源 + 空 RAG 信息。
+    def _get_default_result(self, reason: str = "资源推荐服务暂时不可用") -> Dict:
+        """所有通道都失败时的降级结果：非空、带明确标记，不再返回空列表。
 
-        返回空列表而不是抛异常，让编排层还能把计划和评估结果交回前端。
+        resources 里是一条「说明条目」而不是伪造的学习资源，前端能显示失败原因；
+        rag_info.degraded=True 让调用方能区分降级结果与正常结果。
+        仍返回 dict 而不是抛异常，编排层可以把计划和评估结果交回前端。
         """
-        return {"resources": [], "rag_info": {}}
+        return {
+            "resources": [{
+                "id": "",
+                "phase": "资源推荐",
+                "type": "说明",
+                "title": "暂时无法获取推荐资源",
+                "description": (
+                    f"{reason}。请检查 backend/.env 中的 DEEPSEEK_API_KEY / "
+                    "TAVILY_API_KEY 与网络连通性后重试；学习计划与评估结果不受影响。"
+                ),
+                "duration": "",
+                "difficulty": "",
+                "recommendation_reason": reason,
+                "url": "",
+                "source": "fallback_notice",
+            }],
+            "rag_info": {
+                "source_info": "所有资源通道均失败，返回降级说明",
+                "degraded": True,
+                "reason": reason,
+                "used_web_search": False,
+                "kb_count": 0,
+                "web_count": 0,
+                "llm_count": 0,
+            },
+        }
     
     def recommend(self, requirement_info: Dict, learning_plan: Dict) -> Dict:
         """
@@ -128,8 +155,8 @@ class ResourceRecommenderAgent(BaseAgent):
         current_foundation = requirement_info.get("current_foundation", "零基础")
 
         if not learning_objective:
-            print(f"[{self.AGENT_NAME}] 警告：缺少学习目标，返回空资源列表")
-            return self._get_default_result()
+            print(f"[{self.AGENT_NAME}] 警告：缺少学习目标，返回降级说明")
+            return self._get_default_result("缺少学习目标，无法生成资源推荐")
 
         print(f"[{self.AGENT_NAME}] 开始推荐学习资源: {learning_objective}")
 
@@ -158,29 +185,42 @@ class ResourceRecommenderAgent(BaseAgent):
         kb_count = sum(1 for r in rag_resources if r.get("source") == "knowledge_base")
         web_count = sum(1 for r in rag_resources if r.get("source") == "web_search")
 
-        # 如果RAG结果不足（无资源或相关性太低），回退LLM
+        # 知识库质量分低 ≠ 联网兜底失败。只要拿到了网络资源就保留，
+        # 否则会被 LLM 分支整体覆盖，配了 TAVILY_API_KEY 也看不到联网结果。
         quality_passed = rag_result.get("quality", {}).get("passed", True)
-        if not rag_resources or not quality_passed:
-            print(f"[{self.AGENT_NAME}] RAG无相关结果 (KB相似度: {kb_relevance:.2f})，使用LLM生成")
+        rag_usable = bool(rag_resources) and (quality_passed or web_count > 0)
+        if not rag_usable:
+            print(f"[{self.AGENT_NAME}] RAG无可用结果 (KB相似度: {kb_relevance:.2f}, "
+                  f"网络资源: {web_count})，使用LLM生成")
             llm_result = self._recommend_with_llm(
                 requirement_info,
                 learning_plan
             )
-            # 保留RAG来源信息
+            # 保留RAG来源信息；若 LLM 也降级了，不要把它伪装成"AI生成成功"
+            base_rag_info = llm_result.get("rag_info", {}) or {}
+            degraded = bool(base_rag_info.get("degraded"))
             llm_result["rag_info"] = {
-                "source_info": f"本地知识库无相关资源 → AI生成, 知识库相似度: {kb_relevance:.2f}",
+                **base_rag_info,
+                "source_info": (base_rag_info.get("source_info")
+                                if degraded else
+                                f"本地知识库无相关资源 → AI生成, 知识库相似度: {kb_relevance:.2f}"),
                 "kb_relevance": kb_relevance,
                 "rewrite_count": rag_result.get("rewrite_count", 0),
                 "used_web_search": rag_result.get("used_web_search", False),
                 "kb_count": 0,
                 "web_count": 0,
-                "llm_count": len(llm_result.get("resources", [])),
+                "llm_count": 0 if degraded else len(llm_result.get("resources", [])),
                 "quality": rag_result.get("quality", {}),
                 "rerank": rag_result.get("rerank", {}),
                 "candidate_count": rag_result.get("candidate_count", 0),
                 "filters": rag_result.get("filters", {}),
                 "search_query": rag_result.get("search_query", ""),
                 "quality_fallback": not quality_passed,
+                "degraded": degraded,
+                "web_error": rag_result.get("web_error", ""),
+                "web_search_status": rag_result.get("web_search_status", {}),
+                "decision": rag_result.get("decision", ""),
+                "no_hit_reason": rag_result.get("no_hit_reason", ""),
             }
             return llm_result
 
@@ -200,6 +240,11 @@ class ResourceRecommenderAgent(BaseAgent):
                 "candidate_count": rag_result.get("candidate_count", 0),
                 "filters": rag_result.get("filters", {}),
                 "search_query": rag_result.get("search_query", ""),
+                "web_error": rag_result.get("web_error", ""),
+                "web_search_status": rag_result.get("web_search_status", {}),
+                "decision": rag_result.get("decision", ""),
+                "no_hit_reason": rag_result.get("no_hit_reason", ""),
+                "degraded": False,
             }
         }
     
@@ -214,8 +259,18 @@ class ResourceRecommenderAgent(BaseAgent):
 
             result = self._call_api(input_json)
 
-            # 为 LLM 生成的每个资源标注来源
+            # _call_api 熔断/解析失败时会直接返回 _get_default_result()：
+            # 保留它的 degraded 标记，不要伪装成"AI生成成功"
+            if not isinstance(result, dict):
+                return self._get_default_result("LLM 返回了无法解析的结果")
+            if (result.get("rag_info") or {}).get("degraded"):
+                return result
+
             resources = result.get("resources", [])
+            if not resources:
+                return self._get_default_result("LLM 未返回任何学习资源")
+
+            # 为 LLM 生成的每个资源标注来源
             for r in resources:
                 if not r.get("source"):
                     r["source"] = "llm_generated"
@@ -234,7 +289,7 @@ class ResourceRecommenderAgent(BaseAgent):
 
         except Exception as e:
             print(f"[{self.AGENT_NAME}] LLM推荐失败: {e}")
-            return self._get_default_result()
+            return self._get_default_result(f"LLM 资源生成失败: {e}")
     
     def submit_feedback(self,
                         resource_id: str,
