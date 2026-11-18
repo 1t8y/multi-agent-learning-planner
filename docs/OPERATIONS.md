@@ -55,8 +55,9 @@ python -m venv .venv-ragas
 DEEPSEEK_API_KEY=your_key_here
 API_BASE_URL=https://api.deepseek.com/v1/chat/completions
 
-# 可选：本地知识库不足时补充联网搜索
+# 联网兜底：填入 Tavily API Key 后自动启用；留空则只用本地知识库 + LLM 兜底
 TAVILY_API_KEY=your_key_here
+WEB_SEARCH_ENABLED=true
 
 # 增强 RAG 参数
 RAG_CANDIDATE_K=10
@@ -68,16 +69,50 @@ RAG_QUALITY_THRESHOLD=0.55
 # 重排置信度门控：首位置信度低于该值时保留融合顺序（0 = 关闭）
 RAG_RERANK_MIN_CONFIDENCE=0
 
+# 库外查询识别：两级门槛（标定依据见 docs/ARCHITECTURE.md）
+RAG_RRF_MIN_DENSE_SIMILARITY=0.25   # RRF 融合前 dense 真实余弦下限
+RAG_RRF_MIN_BM25_SCORE=1.0          # RRF 融合前 BM25 绝对下限
+RAG_HARD_COSINE=0.25                # 硬线：cosine 与 logit 同时低于 → 直接联网
+RAG_HARD_LOGIT=0.5
+RAG_SOFT_COSINE=0.28                # 软线：任一路低于 → 改写查询重试
+RAG_SOFT_LOGIT=0.65
+
 # 结果中最少覆盖的资源类型数（0 = 关闭）
 RAG_MIN_TYPES=0
 ```
+
+### 联网兜底的行为
+
+`WEB_SEARCH_ENABLED=true` + 配置了 `TAVILY_API_KEY` 时，只有以下两种情况会发起联网搜索：
+
+- **决策 `web`**：RRF 融合前 dense 侧全部低于 `RAG_RRF_MIN_DENSE_SIMILARITY`，或门控判定
+  两路绝对信号同时低于硬线 → 判「知识库无覆盖」，**跳过查询改写**、清空不相关的本地候选，
+  直接联网。
+- **决策 `rewrite` 且改写次数用尽**：单路信号偏弱或总分未达标 → 先改写查询
+  （最多 `RAG_MAX_REWRITE_TIMES` 次），仍不达标才联网，此时保留本地候选作为补充。
+
+判定依据与阈值标定见 [ARCHITECTURE.md](./ARCHITECTURE.md) 的「库外查询识别与两级门控」。
+结果带 `source: web_search` 标记，与本地资源区分。
+
+- 库内查询若被误判为无覆盖，优先**调低** `RAG_RRF_MIN_DENSE_SIMILARITY` / `RAG_HARD_COSINE`；
+  库外查询若仍混出本地资源，检查 `rag_info.decision` 与 `rag_info.quality.signals` 里的
+  `top_dense_similarity` / `top_rerank_logit`，再调**高**软线。改完务必跑
+  `python -m eval.test_rag_pipeline`（库内 10 题 + 库外 3 题）。
+
+- 主通道是 `tavily-python` SDK；SDK 不可用或调用异常时自动切到 Tavily REST 接口直连，
+  两条通道用的是同一个 key。
+- 两条通道都失败时**不再静默返回空结果**：错误原因会写入 `rag_info.web_error`，
+  上层继续走 LLM 兜底；LLM 也失败时返回一条明确标注的降级说明，前端不会拿到空列表。
+- `WEB_SEARCH_ENABLED=false` 可完全关闭外部请求（例如离线演示、CI）。
+- 若请求超时或报连接错误，检查网络代理：`requests` 会读 `HTTPS_PROXY` / `HTTP_PROXY`，
+  也可以单独设置 `TAVILY_HTTPS_PROXY`。请求超时固定为 15 秒，不会拖住整条规划链路。
 
 ## 4. 测试与评测命令
 
 ```powershell
 cd backend
 
-# 快速套件：113 项，约 2 秒，不需要模型和向量库
+# 快速套件：127 项，约 2 秒，不需要模型和向量库
 .\.venv-run\Scripts\python.exe -B -m pytest -m "not slow"
 
 # 集成套件：6 项，约 20 秒，需要本地 Embedding / Cross-Encoder

@@ -7,6 +7,90 @@
 > 注：2026-10-31 起后端目录由 `learning-planning-multi-agent/` 改名为 `backend/`、
 > 前端移入 `frontend/`。下文早于该日期的记录保留当时的目录名。
 
+## 2026-11-13（门控实测：库外查询第一次真正走联网）
+
+起因：11-12 的改造上线后，前端仍报「问历史、法律类问题也返回 5 条 AI 资源」。
+查日志发现决定性证据——`[AdvancedRAG]` 行还是旧格式（只有 `候选/重排/质量/分数`），
+新版应带 `决策=... cos=... logit=...`。**根因是后端 Python 进程在改代码之前就启动了**，
+Python 不热重载模块，跑的是旧代码，不是新逻辑失效。
+
+重启后同一查询（「复习近现代历史纲要课程」）：
+
+| 指标 | 旧进程（11-13 17:18） | 新代码（重启后） |
+|---|---|---|
+| 候选数 | 8 | **0** |
+| 质量判定 | medium / 0.6269 | **low / 0.0，decision=web** |
+| 知识库资源 | 5 条 | **0 条** |
+| 联网资源 | 0 | **3 条** |
+| 查询改写 | — | 0 次（硬线直接跳改写） |
+
+编排层评估 7.5~8.5、迭代 0/3，日志无 `稠密检索失败`。
+
+**边界（别过度宣称）**：
+
+1. 本次 5/5 库外查询都是被 **RRF 前置门槛**（dense 余弦全灭）拦下的；
+   门控层「两路双低硬线」与 `rewrite` 软线分支没被真实流量触发，只有单测覆盖。
+2. 联网结果 `type` 全是「文字教程」：`_infer_resource_type` 按 URL 关键词推断，
+   `_merge_and_select` 也不按 `learning_preference` 过滤联网结果，用户勾了「视频」不生效；
+   个别标题质量一般（「目录」「课程大纲-教务系统」），Tavily 结果没有质量筛选。
+3. 编排层评估只看计划、不看资源，所以「资源全是联网的」也不会拉低评分。
+
+## 2026-11-12（库外查询识别：用绝对量取代相对量判定）
+
+起因：知识库只有 AI / 编程 / 数学三个领域，但旧链路**全是相对量**——Chroma 永远返回
+top-k 最近邻，RRF 只按名次融合，重排只在候选内排序，`sigmoid(logit=0)` 还白送 0.5，
+元数据匹配再送 0.20。结果「知识产权法」这类库外查询稳定拿到 0.62 分和 5 条无关资源，
+而且因为 `kb_results` 永不为空，`_search_web` 的触发条件（`kb_empty`）从不成立。
+
+- **先定规则再写代码**：质量报告输出 `decision = pass / rewrite / web`。
+  `web` 硬线＝两路都实测且 top cosine < 0.25 且 top logit < 0.5，或 RRF 跳过融合（无候选）；
+  `rewrite` 软线＝单路低于 0.28 / 0.65 或总分 < 0.55，改写最多 2 次后转联网。
+- **只用绝对量**：`dense_similarity`（真实余弦）与 `rerank_score`（原始 logit）。
+  不再拿 sigmoid 后的 `rerank_confidence` 当相关性，也不用它回写 `similarity`
+  ——旧写法会让 `MIN_KB_SIMILARITY` 失效、前端相似度变假值。
+- **链路分流**：`_evaluate_results` 按 `decision` 走三路；`web` 分支清空 `kb_results`
+  后直接联网，**跳过改写**（改写救不回库里不存在的东西）；`rag_info` 新增
+  `decision` 与 `no_hit_reason`，前端诊断条据此显示「跳过融合」的原因。
+- **阈值要标定，不要拍脑袋**：新增 `eval/tools/calibrate_scope_thresholds.py`，
+  跑库内/库外场景输出余弦与 logit 分布；换 Embedding、换重排模型、增删知识库后必须重跑。
+- 质量分公式改为 `0.65*top + 0.25*avg + 0.10*match_ratio`（旧 `0.55/0.25/0.20`）：
+  旧公式下库内 0.71~0.76、库外 0.60~0.64，区间几乎重叠，门控拦不住。
+- 历史实验脚本（`eval/tools/experiment_quality_*`）显式关掉新门槛与联网，并标注
+  「门控重构前的历史口径」，避免旧数字被当成当前结果。
+- **验证**：`eval.test_rag_pipeline` 13 题（库内 10 + 库外 3）全过，库内 top id 不变、
+  库外 3/3 `decision=web` 且不产生 KB 资源；新增 `tests/test_out_of_scope_gate.py`
+  （不加载模型、不联网）。
+
+同一天还做了两项与门控配套的加固，否则多线程下新链路会崩：
+
+- **异步与并发**：7 个 async 路由里的同步 IO / Chroma 统计 / 重量级初始化改走
+  `asyncio.to_thread`；配套加锁——`FeedbackManager`（`@_synchronized` + `tmp` + `os.replace`
+  原子落盘）、`HybridRetriever`（LRU 与计数）、`VectorStoreManager`（`data_version` 自增、
+  BM25 check-then-set 重建、`update_feedback` 读改写）、`model_loader` / `ConfigManager` /
+  `GraphOrchestrator.compile` 双重检查锁。**锁与 to_thread 是配套的，不要单独删任一边。**
+- **边界与数据流**：`agent_coordinator` 引用已删除的 `self.hermes_sync` 会让 CLI 直接崩；
+  评估异常分支补齐字段与正常分支同构；`_attach_scores` 改按 id 匹配（按标题会丢资源 id，
+  前端反馈就写不回去）；缓存读写用 `_copy_result` 断开嵌套引用。
+- **联网兜底重写**：`web_search.py` 改为 SDK 优先、REST 直连备用，15 s 超时，
+  两通道都失败抛 `WebSearchError`——联网失败不能拖住整条规划链路。
+
+验证：pytest 全量通过（当时 119 项）；`eval.test_rag_pipeline` 10/10（改造前口径）、
+十档消融指标与基线一致（最优 `MRR@5=0.9897`）；前端 `npm run build` +
+`verify:api-errors` 9/9；30 路并发反馈落盘 30/30、各路由响应键集合不变。
+
+## 2026-11-11（服务日志自动落盘）
+
+起因：排障时只能靠终端滚动输出，`Ctrl+C` 之后什么都留不下；而 uvicorn 在 Windows
+关闭阶段会重放捕获的信号，打出一段 `KeyboardInterrupt` / `CancelledError` 噪音，
+没有日志就无法判断是启动失败还是关闭噪音。
+
+- `src/utils/file_log.py`：`enable_file_logging()` 用 `_Tee` 包住 `sys.stdout/stderr`，
+  终端照常输出，文件按行加时间戳写 `backend/logs/server.log`，5 MB 轮转；
+  `FILE_LOG_ENABLED=0` 可关闭。uvicorn CLI 启动时已有的 `StreamHandler` 用 `setStream`
+  指向 Tee，否则 CLI 日志漏记。
+- `src/paths.py` 增 `LOG_DIR`；`.gitignore` 加 `backend/logs/`。
+- 用法与常见报错对照写在本机 `docs/LOGGING_GUIDE.md`（含个人排障习惯，不入库）。
+
 ## 2026-11-04（检索策略从 memory 抽到 rag/retrieval.py）
 
 起因：RRF 融合属于 RAG 的检索环节，却放在 `memory/` 里，概念上说不通；

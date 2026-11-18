@@ -5,11 +5,11 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-ff6b35)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi)
-![Tests](https://img.shields.io/badge/tests-113%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-142%20passed-brightgreen)
 
 **一句话需求 → 阶段化学习计划 + 可溯源资源清单 + 六维评估，四个 Agent 用 LangGraph 编排，评估不达标回环重生成（≤3 轮）。**  
 检索链路：BGE 稠密 + BM25 稀疏双路召回 → RRF 融合（只看名次，免归一化）→ Cross-Encoder 精排 → 置信度门控。  
-效果由 97 道自建题、十档消融、RAGAS（RAG 评测框架）四指标与 113 项 CI（持续集成）测试背书，失败分析与已知偏差如实入档。
+效果由 97 道自建题、十档消融、RAGAS（RAG 评测框架）四指标与 142 项 CI（持续集成）测试背书，失败分析与已知偏差如实入档。
 
 ---
 
@@ -52,7 +52,7 @@ Cross-Encoder 精排在这个语料上是负收益：`Hit@1 0.9072 → 0.8866`�
 每一步都记录质量分与信号，前端能看到当前走的是哪条路径。
 
 **5. 评测是可复现的，不是口头的**  
-97 题检索集 + 十档消融脚本 + RAGAS 四指标 + 119 项 pytest（CI 跑其中 113 项，6 项集成测试需本地模型）+ GitHub Actions。  
+97 题检索集 + 十档消融脚本 + RAGAS 四指标 + 148 项 pytest（CI 跑其中 142 项，6 项集成测试需本地模型）+ GitHub Actions。  
 指标口径、已知偏差（例如 `answer_relevancy` 因为被评测的是资源清单模板而偏低）都写在报告里。
 
 ## 架构
@@ -94,7 +94,7 @@ flowchart TD
 | 后端 | FastAPI + Pydantic + uvicorn（端口可用 `API_PORT` 覆盖）                   |
 | 前端 | React 18 + TypeScript + Vite + Tailwind CSS                        |
 | 评测 | 自建检索指标（Hit@k / MRR@k / P@k）+ RAGAS 0.4.3                           |
-| 工程 | pytest（119 项）、GitHub Actions、esbuild 故障注入探针                        |
+| 工程 | pytest（148 项）、GitHub Actions、esbuild 故障注入探针                        |
 
 ## 快速开始
 
@@ -105,7 +105,7 @@ git clone https://github.com/1t8y/multi-agent-learning-planner.git
 cd multi-agent-learning-planner/backend
 python -m venv .venv-run
 .\.venv-run\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env      # 填入 DEEPSEEK_API_KEY
+Copy-Item .env.example .env      # 必填 DEEPSEEK_API_KEY；可选 TAVILY_API_KEY 开启联网兜底
 .\.venv-run\Scripts\python.exe -B -m src.api.api_server
 ```
 
@@ -139,7 +139,7 @@ multi-agent/
 │   │   └── paths.py                 # 统一路径常量，避免各处自己推导
 │   ├── eval/                        # 评测与回归：十档消融、RAGAS、场景回归、实验分析
 │   ├── scripts/                     # 离线脚本：重建知识库、构建评测集、下载模型
-│   ├── tests/                       # pytest 119 项（113 快速 + 6 集成）
+│   ├── tests/                       # pytest 148 项（142 快速 + 6 集成）
 │   └── data/                        # 60 条已审核资源 + 评测集与结果
 ├── frontend/                        # React + TypeScript + Vite（输入 / 结果 / 反馈 / 贡献资源）
 ├── docs/                            # 架构、运维、检索评测报告、开发记录、演示脚本

@@ -64,7 +64,7 @@ backend/
 │   ├── build_testset.py             从知识库派生评测集
 │   ├── compare_ragas.py             新旧评测同题对照
 │   └── download_chroma_model.py / manual_download_model.py
-├── tests/                 pytest 用例（119 项）
+├── tests/                 pytest 用例（133 项）
 ├── data/                  知识库、评测集、反馈记录（部分被 gitignore）
 └── pytest.ini
 ```
