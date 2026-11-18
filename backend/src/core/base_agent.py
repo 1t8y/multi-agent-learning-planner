@@ -105,12 +105,10 @@ class BaseAgent(ABC):
         self.api_key = self.config.get('api_key') or config.get_api_key()
         self.base_url = self.config.get('base_url') or config.get_api_base_url()
         
-        # 模型配置
-        self.model = self.config.get('model') or model_config.get('model')
-        self.max_tokens = self.config.get('max_tokens') or model_config.get('max_tokens')
-        self.temperature = self.config.get('temperature') or model_config.get('temperature')
-        self.timeout = self.config.get('timeout') or model_config.get('timeout')
-        self.retry_count = self.config.get('retry_count') or model_config.get('retry_count')
+        # 模型配置：0、False 是合法取值（确定性输出/不重试），用 or 合并会被默认值覆盖
+        for key in ('model', 'max_tokens', 'temperature', 'timeout', 'retry_count'):
+            value = self.config.get(key)
+            setattr(self, key, value if value is not None else model_config.get(key))
         
         # 加载系统提示词
         self.system_prompt = self._load_system_prompt()
@@ -256,18 +254,24 @@ class BaseAgent(ABC):
                 self.last_execution_time = time.time() - start_time
                 self.call_count += 1
                 
-                # 解析响应
+                # 解析响应：错误体/限流响应里可能没有 choices，直接下标会把异常抛给熔断器
                 result = response.json()
-                raw_response = result["choices"][0]["message"]["content"]
-                
+                choices = result.get("choices") if isinstance(result, dict) else None
+                first = choices[0] if isinstance(choices, list) and choices else {}
+                message = first.get("message") if isinstance(first, dict) else None
+                raw_response = message.get("content") if isinstance(message, dict) else None
+                if not isinstance(raw_response, str):
+                    raw_response = ""
+
                 # 提取JSON
                 json_str = self._extract_json(raw_response)
                 if json_str:
                     return json.loads(json_str)
-                
-                # 返回默认结果
+
+                # 拿不到可解析内容也是一次失败，不能只增 call_count 不增 error_count
+                self.error_count += 1
                 return self._get_default_result()
-            
+
             except requests.exceptions.RequestException as e:
                 last_exception = e
                 if attempt < self.retry_count:
@@ -277,6 +281,11 @@ class BaseAgent(ABC):
                 continue
             except json.JSONDecodeError:
                 print(f"[{self.__class__.__name__}] JSON解析失败")
+                self.error_count += 1
+                return self._get_default_result()
+            except (KeyError, IndexError, TypeError, AttributeError) as e:
+                print(f"[{self.__class__.__name__}] 响应体格式异常: {e}")
+                self.error_count += 1
                 return self._get_default_result()
         
         # 所有重试都失败

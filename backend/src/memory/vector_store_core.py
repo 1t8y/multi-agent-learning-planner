@@ -269,15 +269,16 @@ class VectorStoreManager:
     @_bm25_stale.setter
     def _bm25_stale(self, value: bool) -> None:
         """外部置 True 时，标记本地索引失效并清空共享缓存与查询缓存"""
-        self._bm25_loaded = not value
-        if value:
-            self.bm25 = None
-            self._bm25_docs, self._bm25_ids, self._bm25_metas = [], [], []
-            with _CACHE_LOCK:
+        # 与稀疏检索取快照、写库失效共用同一把锁，避免「标记失效」和「读索引」交错
+        with _CACHE_LOCK:
+            self._bm25_loaded = not value
+            if value:
+                self.bm25 = None
+                self._bm25_docs, self._bm25_ids, self._bm25_metas = [], [], []
                 _bump_generation(self._store_key)
                 for key in [k for k in _BM25_CACHE if k[:2] == (self._store_key, "v1")]:
                     _BM25_CACHE.pop(key, None)
-        self._bump_version()
+            self._bump_version()
 
     def _init_client(self):
         """初始化 Chroma 客户端（进程内按路径共享）"""
@@ -371,13 +372,15 @@ class VectorStoreManager:
         )
 
         try:
-            self.collection.add(
-                ids=[resource_id],
-                documents=[f"{title}\n{description}"],
-                metadatas=[resource.to_metadata()]
-            )
+            # 写库与缓存失效必须连在一起，否则并发的 BM25 重建可能读到写之前的快照
+            with _CACHE_LOCK:
+                self.collection.add(
+                    ids=[resource_id],
+                    documents=[f"{title}\n{description}"],
+                    metadatas=[resource.to_metadata()]
+                )
+                self._invalidate()
             print(f"[vector_store] 资源已添加: {title} (ID: {resource_id})")
-            self._invalidate()
             return resource_id
         except Exception as e:
             print(f"[vector_store] 添加资源失败: {e}")
@@ -407,8 +410,9 @@ class VectorStoreManager:
             documents.append(f"{resource.title}\n{resource.description}")
             metadatas.append(resource.to_metadata())
         try:
-            self.collection.add(ids=ids, documents=documents, metadatas=metadatas)
-            self._invalidate()
+            with _CACHE_LOCK:
+                self.collection.add(ids=ids, documents=documents, metadatas=metadatas)
+                self._invalidate()
             return ids
         except Exception as e:
             print(f"[vector_store] 批量添加失败: {e}")
@@ -420,17 +424,21 @@ class VectorStoreManager:
         检索层（src/rag/retrieval.py）的缓存键里带着这个版本号，
         所以写完库之后旧缓存自然不再命中，存储层不需要反过来操作缓存对象。
         """
-        self.data_version += 1
+        # 自增必须与「清空派生缓存」在同一临界区内完成，否则并发写会丢自增，
+        # 检索缓存就会继续命中写库前的旧结果。
+        with _CACHE_LOCK:
+            self.data_version += 1
 
     def _invalidate(self) -> None:
-        """文档增删后：失效 BM25 索引，并提升数据版本号让检索缓存失效"""
+        """写库后：失效 BM25 索引与共享缓存，并提升数据版本号让检索缓存失效"""
         with _CACHE_LOCK:
             _bump_generation(self._store_key)
             for key in [k for k in _BM25_CACHE if k[:2] == (self._store_key, "v1")]:
                 _BM25_CACHE.pop(key, None)
-        self._bm25_loaded = False
-        self.bm25 = None
-        self._bump_version()
+            self._bm25_loaded = False
+            self.bm25 = None
+            self._bm25_docs, self._bm25_ids, self._bm25_metas = [], [], []
+            self._bump_version()
 
     # ------------------------------------------------------------------
     # 原始召回：只负责「取回候选」，融合、去重、多样性在 src/rag/retrieval.py
@@ -510,31 +518,32 @@ class VectorStoreManager:
         """从 Chroma 集合重建 BM25 索引，索引在多实例间共享"""
         if not BM25_AVAILABLE:
             return
-        cache_key = (self._store_key, "v1", _generation(self._store_key))
+        # 查缓存 → 构建 → 写回 → 绑定本地字段必须是一次 check-then-set：
+        # 拆成两段时写库可能夹在中间，把构建前的快照绑到新世代号上。
         with _CACHE_LOCK:
+            cache_key = (self._store_key, "v1", _generation(self._store_key))
             hit = _BM25_CACHE.get(cache_key)
-        if hit is not None:
-            self.bm25, self._bm25_docs, self._bm25_ids, self._bm25_metas = hit
-            self._bm25_loaded = True
-            return
-        try:
-            all_data = self.collection.get()
-            if not all_data or not all_data["documents"]:
+            if hit is not None:
+                self.bm25, self._bm25_docs, self._bm25_ids, self._bm25_metas = hit
                 self._bm25_loaded = True
                 return
-            tokenized = [_tokenize_for_bm25(doc) for doc in all_data["documents"]]
-            bm25 = BM25Okapi(tokenized)
-            payload = (bm25, list(all_data["documents"]), list(all_data["ids"] or []),
-                       list(all_data["metadatas"] or []))
-            with _CACHE_LOCK:
+            try:
+                all_data = self.collection.get()
+                if not all_data or not all_data["documents"]:
+                    self._bm25_loaded = True
+                    return
+                tokenized = [_tokenize_for_bm25(doc) for doc in all_data["documents"]]
+                bm25 = BM25Okapi(tokenized)
+                payload = (bm25, list(all_data["documents"]), list(all_data["ids"] or []),
+                           list(all_data["metadatas"] or []))
                 _BM25_CACHE[cache_key] = payload
                 _LOAD_STATS["bm25_builds"] += 1
-            self.bm25, self._bm25_docs, self._bm25_ids, self._bm25_metas = payload
-            self._bm25_loaded = True
-            tokenizer_info = "jieba中文分词" if JIEBA_AVAILABLE else "字符级分词"
-            print(f"[vector_store] BM25索引已重建（{len(self._bm25_ids)}个文档, {tokenizer_info}）")
-        except Exception as e:
-            print(f"[vector_store] BM25索引重建失败: {e}")
+                self.bm25, self._bm25_docs, self._bm25_ids, self._bm25_metas = payload
+                self._bm25_loaded = True
+                tokenizer_info = "jieba中文分词" if JIEBA_AVAILABLE else "字符级分词"
+                print(f"[vector_store] BM25索引已重建（{len(self._bm25_ids)}个文档, {tokenizer_info}）")
+            except Exception as e:
+                print(f"[vector_store] BM25索引重建失败: {e}")
 
     def _sparse_search(self, query: str, top_k: int = 5,
                        field: Optional[str] = None,
@@ -543,27 +552,34 @@ class VectorStoreManager:
         """BM25 关键词稀疏检索，元数据过滤与 dense 通路保持一致"""
         if not BM25_AVAILABLE:
             return []
-        if not self._bm25_loaded:
-            self._rebuild_bm25_index()
-        if self.bm25 is None:
+        with _CACHE_LOCK:
+            if not self._bm25_loaded:
+                self._rebuild_bm25_index()
+            # 一次性取成局部快照：遍历过程中若写库替换了实例字段，
+            # 也不会出现「A 的 BM25 分数配上 B 的 id/元数据」的错位。
+            bm25 = self.bm25
+            docs = self._bm25_docs
+            ids = self._bm25_ids
+            metas = self._bm25_metas
+        if bm25 is None:
             return []
-        scores = self.bm25.get_scores(_tokenize_for_bm25(query))
+        scores = bm25.get_scores(_tokenize_for_bm25(query))
         ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
         results = []
         for idx, score in ranked:
             if score <= 0:
                 continue
-            meta = self._bm25_metas[idx] if idx < len(self._bm25_metas) else {}
+            meta = metas[idx] if idx < len(metas) else {}
             if field and meta.get("field") != field:
                 continue
             if level and meta.get("level") != level:
                 continue
             if resource_types and meta.get("resource_type") not in resource_types:
                 continue
-            document = self._bm25_docs[idx] if idx < len(self._bm25_docs) else ""
+            document = docs[idx] if idx < len(docs) else ""
             title = meta.get("title", "")
             results.append({
-                "id": self._bm25_ids[idx] if idx < len(self._bm25_ids) else "",
+                "id": ids[idx] if idx < len(ids) else "",
                 "title": title,
                 "description": self._strip_title(document, title),
                 "resource_type": meta.get("resource_type", ""),
@@ -599,25 +615,28 @@ class VectorStoreManager:
             return False
 
         try:
-            existing = self.collection.get(ids=[resource_id])
+            # 读-改-写整段串行：并发反馈若都读到同一个 old_count，会互相覆盖评分
+            with _CACHE_LOCK:
+                existing = self.collection.get(ids=[resource_id])
 
-            if not existing["metadatas"]:
-                print(f"[vector_store] 资源不存在: {resource_id}")
-                return False
+                if not existing.get("metadatas"):
+                    print(f"[vector_store] 资源不存在: {resource_id}")
+                    return False
 
-            metadata = existing["metadatas"][0]
-            old_rating = float(metadata.get("rating", 0))
-            old_count = int(metadata.get("feedback_count", 0))
+                metadata = existing["metadatas"][0] or {}
+                old_rating = float(metadata.get("rating", 0) or 0)
+                old_count = int(metadata.get("feedback_count", 0) or 0)
 
-            new_count = old_count + 1
-            new_rating = ((old_rating * old_count) + rating) / new_count
+                new_count = old_count + 1
+                new_rating = ((old_rating * old_count) + rating) / new_count
 
-            metadata["rating"] = str(round(new_rating, 2))
-            metadata["feedback_count"] = str(new_count)
+                metadata["rating"] = str(round(new_rating, 2))
+                metadata["feedback_count"] = str(new_count)
 
-            self.collection.update(ids=[resource_id], metadatas=[metadata])
-            # 评分变了但文档内容没变：只需提升版本号让检索缓存失效，不必重建 BM25
-            self._bump_version()
+                self.collection.update(ids=[resource_id], metadatas=[metadata])
+                # 评分同样写进了 BM25 索引的元数据快照：只提升查询版本号会让稀疏通路
+                # 一直返回旧评分，所以这里走完整失效流程，让下一次检索重建快照。
+                self._invalidate()
             print(f"[vector_store] 资源评分更新: {old_rating:.1f} -> {new_rating:.1f} ({new_count}条反馈)")
             return True
 
@@ -708,9 +727,10 @@ class VectorStoreManager:
             return
 
         try:
-            self.client.delete_collection(self.collection_name)
-            self._init_collection()
-            self._invalidate()
+            with _CACHE_LOCK:
+                self.client.delete_collection(self.collection_name)
+                self._init_collection()
+                self._invalidate()
             print("[vector_store] 数据库已重置")
         except Exception as e:
             print(f"[vector_store] 重置失败: {e}")

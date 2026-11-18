@@ -73,7 +73,7 @@ class ResourceReranker:
             for item, score in zip(resources, scores)
         ]
         ranked = sorted(annotated, key=lambda item: item["rerank_score"], reverse=True)
-        if self.min_confidence > 0 and ranked[0]["rerank_confidence"] < self.min_confidence:
+        if ranked and self.min_confidence > 0 and ranked[0]["rerank_confidence"] < self.min_confidence:
             # 首位候选都拿不到足够置信度，说明模型对这题没有判断力，
             # 此时按融合顺序返回更安全（实测该区间重排会净掉分）
             self.last_gate_fallback = True

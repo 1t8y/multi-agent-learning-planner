@@ -10,13 +10,27 @@
 - 资源评分更新机制
 """
 
+import functools
 import os
 import json
+import threading
 import uuid
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from enum import Enum
+
+
+def _synchronized(method):
+    """实例方法级可重入锁：并发提交时把「改内存 + 落盘」包成一次原子操作。
+
+    用 functools.wraps 保留原方法名、文档与签名，调用方看到的参数与返回值都不变。
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
 
 
 class FeedbackType(Enum):
@@ -99,6 +113,9 @@ class FeedbackManager:
             vector_store: 向量数据库实例
             data_dir: 反馈数据存放目录，默认 ./data；测试可传临时目录避免污染生产数据
         """
+        # API 路由把同步提交放进线程池后，多个线程会同时落到同一个管理器上；
+        # 记录列表与两个 JSON 文件必须作为一组状态来读写。
+        self._lock = threading.RLock()
         self.vector_store = vector_store
         self.feedback_records: List[UserFeedback] = []
         self.submissions: List[ResourceSubmission] = []
@@ -123,7 +140,12 @@ class FeedbackManager:
             try:
                 with open(self.FEEDBACK_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.feedback_records = [UserFeedback(**item) for item in data]
+                    # 只取 dataclass 认识的字段：历史文件里多一个键不该让整批记录被丢掉
+                    known = UserFeedback.__dataclass_fields__
+                    self.feedback_records = [
+                        UserFeedback(**{k: v for k, v in item.items() if k in known})
+                        for item in data
+                    ]
                 print(f"[FeedbackManager] 已加载 {len(self.feedback_records)} 条反馈记录")
             except Exception as e:
                 print(f"[FeedbackManager] 加载反馈记录失败: {e}")
@@ -132,22 +154,42 @@ class FeedbackManager:
             try:
                 with open(self.SUBMISSION_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.submissions = [ResourceSubmission(**item) for item in data]
+                    known = ResourceSubmission.__dataclass_fields__
+                    self.submissions = [
+                        ResourceSubmission(**{k: v for k, v in item.items() if k in known})
+                        for item in data
+                    ]
                 print(f"[FeedbackManager] 已加载 {len(self.submissions)} 个资源提交")
             except Exception as e:
                 print(f"[FeedbackManager] 加载资源提交失败: {e}")
     
+    @_synchronized
     def _save_records(self):
-        """保存记录"""
+        """保存记录：先写临时文件再原子替换，避免写入中途失败留下半截 JSON。"""
         try:
-            with open(self.FEEDBACK_FILE, "w", encoding="utf-8") as f:
-                json.dump([f.to_dict() for f in self.feedback_records], f, ensure_ascii=False, indent=2)
-            
-            with open(self.SUBMISSION_FILE, "w", encoding="utf-8") as f:
-                json.dump([s.to_dict() for s in self.submissions], f, ensure_ascii=False, indent=2)
+            self._ensure_data_dir()
+            self._atomic_write(self.FEEDBACK_FILE,
+                               [f.to_dict() for f in self.feedback_records])
+            self._atomic_write(self.SUBMISSION_FILE,
+                               [s.to_dict() for s in self.submissions])
         except Exception as e:
             print(f"[FeedbackManager] 保存记录失败: {e}")
+
+    @staticmethod
+    def _atomic_write(path: str, rows: List[Dict]) -> None:
+        """整份快照写到同目录临时文件，写完用 os.replace 一次性换掉目标文件。"""
+        tmp = f"{path}.tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(rows, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
     
+    @_synchronized
     def submit_feedback(self,
                         resource_id: str,
                         resource_title: str,
@@ -223,6 +265,7 @@ class FeedbackManager:
             if success:
                 print(f"[FeedbackManager] 资源评分已更新")
     
+    @_synchronized
     def submit_resource(self,
                         title: str,
                         description: str,
@@ -274,6 +317,7 @@ class FeedbackManager:
         
         return submission
     
+    @_synchronized
     def approve_and_add_to_kb(self, submission_id: str, rating: int = 5) -> bool:
         """
         审核通过并加入知识库
@@ -314,6 +358,7 @@ class FeedbackManager:
         
         return False
     
+    @_synchronized
     def get_feedback_stats(self) -> Dict[str, Any]:
         """获取反馈统计"""
         total = len(self.feedback_records)
@@ -333,6 +378,7 @@ class FeedbackManager:
             "total_submissions": len(self.submissions)
         }
     
+    @_synchronized
     def get_pending_submissions(self) -> List[Dict]:
         """获取待审核的资源提交"""
         return [
@@ -341,6 +387,7 @@ class FeedbackManager:
             if s.status == FeedbackStatus.PENDING.value
         ]
     
+    @_synchronized
     def auto_approve_high_quality(self) -> int:
         """
         自动审核高质量资源

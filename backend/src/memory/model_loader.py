@@ -20,30 +20,33 @@ _STATS: Dict[str, Any] = {"local_hits": 0, "network_downloads": 0, "failures": 0
 def _load(kind: str, model_name: str):
     """按类型加载模型：先 local_files_only，失败再联网，结果进程内缓存"""
     key = f"{kind}:{model_name}"
+    # 命中检查与实际加载必须在同一临界区内。分开写时两个并发请求会同时
+    # 通过「未缓存」判断，各加载一份权重，最后只留一份、另一份白白占内存。
     with _LOCK:
         if key in _CACHE:
             return _CACHE[key]
 
-    if kind == "cross_encoder":
-        from sentence_transformers import CrossEncoder as Factory
-    else:
-        from sentence_transformers import SentenceTransformer as Factory
+        if kind == "cross_encoder":
+            from sentence_transformers import CrossEncoder as Factory
+        else:
+            from sentence_transformers import SentenceTransformer as Factory
 
-    try:
-        model = Factory(model_name, local_files_only=True)
-        with _LOCK:
+        try:
+            model = Factory(model_name, local_files_only=True)
             _STATS["local_hits"] += 1
-        print(f"[model_loader] {kind} 从本地缓存加载: {model_name}")
-    except Exception:
-        # 本地缺失或版本不兼容时才联网，外部无网络时会快速失败并抛给调用方
-        model = Factory(model_name)
-        with _LOCK:
-            _STATS["network_downloads"] += 1
-        print(f"[model_loader] {kind} 联网加载: {model_name}")
+            print(f"[model_loader] {kind} 从本地缓存加载: {model_name}")
+        except Exception:
+            # 本地缺失或版本不兼容时才联网；联网仍失败则记一次失败并原样抛给调用方
+            try:
+                model = Factory(model_name)
+                _STATS["network_downloads"] += 1
+                print(f"[model_loader] {kind} 联网加载: {model_name}")
+            except Exception:
+                _STATS["failures"] += 1
+                raise
 
-    with _LOCK:
         _CACHE[key] = model
-    return model
+        return model
 
 
 def get_sentence_transformer(model_name: str):

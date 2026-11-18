@@ -9,12 +9,14 @@
 - 获取知识库统计
 """
 
+import asyncio
 import os
 import json
 from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 
 from src.paths import BACKEND_ROOT
+from src.utils.file_log import enable_file_logging
 
 try:
     from fastapi import FastAPI, HTTPException
@@ -36,9 +38,18 @@ if FASTAPI_AVAILABLE:
         分层之后本文件在 src/api/ 下，如果不切，data/ 与 chroma_db/ 的相对路径会全部指错。
         所以这里显式切到 BACKEND_ROOT，保持与原实现一致的行为。
         """
-        os.chdir(str(BACKEND_ROOT))
-        init_services()
-        init_orchestrator()
+        # 兼容 `python -m uvicorn src.api.api_server:app`：此时 __main__ 不会执行，
+        # 由 lifespan 兜底启用文件日志
+        enable_file_logging()
+
+        def _bootstrap():
+            # chdir、加载向量库/模型、编译编排器都是阻塞操作，放在线程池里执行，
+            # 避免 async 生命周期钩子占住事件循环。三者有顺序依赖，必须留在同一线程。
+            os.chdir(str(BACKEND_ROOT))
+            init_services()
+            init_orchestrator()
+
+        await asyncio.to_thread(_bootstrap)
         yield
 
     app = FastAPI(title="学习规划助手API", version="2.6.4", lifespan=lifespan)
@@ -139,6 +150,44 @@ def init_orchestrator():
         traceback.print_exc()
 
 
+def _build_stats() -> Dict[str, Any]:
+    """同步收集统计；async 路由通过线程池调用，避免阻塞事件循环。"""
+    stats: Dict[str, Any] = {}
+    if rag_recommender and rag_recommender.vector_store:
+        stats["vector_store"] = {
+            **rag_recommender.vector_store.get_stats(),
+            "retrieval": (rag_recommender.retriever.get_retrieval_stats()
+                          if getattr(rag_recommender, "retriever", None) else {}),
+        }
+    if feedback_manager:
+        stats["feedback"] = feedback_manager.get_feedback_stats()
+    return stats
+
+
+def _build_health_payload() -> Dict[str, Any]:
+    """同步收集健康检查数据；async 路由通过线程池调用。"""
+    from src.memory.model_loader import get_loader_stats
+    from src.memory.vector_store import get_cache_stats
+
+    payload: Dict[str, Any] = {
+        "status": "ok",
+        "version": app.version,
+        "vector_store_ready": bool(rag_recommender and rag_recommender.vector_store),
+        "models": get_loader_stats(),
+        "caches": get_cache_stats(),
+    }
+    if rag_recommender and rag_recommender.vector_store:
+        store_stats = rag_recommender.vector_store.get_stats()
+        payload["knowledge_base"] = {
+            "total_count": store_stats.get("total_count", 0),
+            "fields": store_stats.get("fields", {}),
+            "levels": store_stats.get("levels", {}),
+        }
+        payload["retrieval"] = (rag_recommender.retriever.get_retrieval_stats()
+                                if getattr(rag_recommender, "retriever", None) else {})
+    return payload
+
+
 if FASTAPI_AVAILABLE:
     @app.post("/api/plan")
     async def generate_plan(request: PlanRequest):
@@ -149,7 +198,7 @@ if FASTAPI_AVAILABLE:
         print(f"[API] 收到请求: {request.userInput}")
 
         try:
-            result = orchestrator.invoke(request.userInput)
+            result = await orchestrator.ainvoke(request.userInput)
             print(f"[API] 返回结果: 学习目标={result.get('requirement_data', {}).get('learning_objective', 'N/A')}")
             return result
         except Exception as e:
@@ -166,14 +215,15 @@ if FASTAPI_AVAILABLE:
             raise HTTPException(status_code=500, detail="反馈系统未初始化")
         
         try:
-            result = feedback_manager.submit_feedback(
+            result = await asyncio.to_thread(
+                feedback_manager.submit_feedback,
                 resource_id=feedback.resource_id,
                 resource_title=feedback.resource_title,
                 resource_url=feedback.resource_url,
                 feedback_type=feedback.feedback_type,
                 rating=feedback.rating,
                 comment=feedback.comment,
-                learning_objective=feedback.learning_objective
+                learning_objective=feedback.learning_objective,
             )
             
             if result:
@@ -215,7 +265,8 @@ if FASTAPI_AVAILABLE:
             )
 
         try:
-            result = feedback_manager.submit_resource(
+            result = await asyncio.to_thread(
+                feedback_manager.submit_resource,
                 title=title,
                 description=(submission.description or "").strip(),
                 url=url,
@@ -242,19 +293,7 @@ if FASTAPI_AVAILABLE:
         存储分布来自 VectorStoreManager，检索计数来自 HybridRetriever，
         这里合并成与重构前完全一致的响应结构（vector_store.retrieval）。
         """
-        stats = {}
-
-        if rag_recommender and rag_recommender.vector_store:
-            stats["vector_store"] = {
-                **rag_recommender.vector_store.get_stats(),
-                "retrieval": (rag_recommender.retriever.get_retrieval_stats()
-                              if getattr(rag_recommender, "retriever", None) else {}),
-            }
-        
-        if feedback_manager:
-            stats["feedback"] = feedback_manager.get_feedback_stats()
-        
-        return stats
+        return await asyncio.to_thread(_build_stats)
     
     
     @app.get("/api/resources/pending")
@@ -263,7 +302,7 @@ if FASTAPI_AVAILABLE:
         if not feedback_manager:
             raise HTTPException(status_code=500, detail="反馈系统未初始化")
         
-        return feedback_manager.get_pending_submissions()
+        return await asyncio.to_thread(feedback_manager.get_pending_submissions)
 
     @app.get("/api/resources/{resource_id}/stats")
     async def get_resource_stats(resource_id: str):
@@ -275,7 +314,8 @@ if FASTAPI_AVAILABLE:
         if not rag_recommender or not rag_recommender.vector_store:
             raise HTTPException(status_code=503, detail="向量库未初始化")
 
-        stats = rag_recommender.vector_store.get_resource_stats(resource_id)
+        stats = await asyncio.to_thread(
+            rag_recommender.vector_store.get_resource_stats, resource_id)
         if not stats:
             raise HTTPException(status_code=404, detail=f"资源不存在: {resource_id}")
         return stats
@@ -288,26 +328,7 @@ if FASTAPI_AVAILABLE:
         预热是否完成、模型是否只加载了一份，都可以在这里直接看到，
         排查"冷启动慢"和"检索变慢"时不用再翻进程日志。
         """
-        from src.memory.model_loader import get_loader_stats
-        from src.memory.vector_store import get_cache_stats
-
-        payload = {
-            "status": "ok",
-            "version": app.version,
-            "vector_store_ready": bool(rag_recommender and rag_recommender.vector_store),
-            "models": get_loader_stats(),
-            "caches": get_cache_stats(),
-        }
-        if rag_recommender and rag_recommender.vector_store:
-            store_stats = rag_recommender.vector_store.get_stats()
-            payload["knowledge_base"] = {
-                "total_count": store_stats.get("total_count", 0),
-                "fields": store_stats.get("fields", {}),
-                "levels": store_stats.get("levels", {}),
-            }
-            payload["retrieval"] = (rag_recommender.retriever.get_retrieval_stats()
-                                    if getattr(rag_recommender, "retriever", None) else {})
-        return payload
+        return await asyncio.to_thread(_build_health_payload)
 
 
 DEFAULT_API_PORT = 8001
@@ -358,6 +379,8 @@ if __name__ == "__main__":
     
     import uvicorn
     load_env_file()
+    # 必须在 uvicorn.run 之前：让 uvicorn 的 logging handler 直接绑定到日志分流器
+    enable_file_logging()
     port = resolve_api_port()
     print("=" * 60)
     print("学习规划助手API服务")

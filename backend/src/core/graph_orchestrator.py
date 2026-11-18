@@ -16,7 +16,9 @@ LangGraph 多智能体编排器
 - 条件再生：评估分数低于阈值时自动返回 plan 重新生成
 """
 
+import asyncio
 import json
+import threading
 import uuid
 import logging
 from typing import TypedDict, Optional, List, Dict, Any, Literal
@@ -120,17 +122,19 @@ class GraphOrchestrator:
 
         self._graph = None
         self._compiled = False
+        self._enable_interrupt = False
+        self._compile_lock = threading.Lock()
 
         logger.info("四个子Agent加载完成")
 
     # ── 节点1：需求提取 ──
     def _node_extract(self, state: LearningState) -> dict:
         """从用户原始输入中提取结构化需求"""
-        user_input = state.get("user_input", "")
+        user_input = state.get("user_input") or ""
         logger.info(f"[extract] 输入: {user_input[:80]}...")
 
         try:
-            requirement_data = self.extractor.extract(user_input)
+            requirement_data = self.extractor.extract(user_input) or {}
             logger.info(f"[extract] 学习目标: {requirement_data.get('learning_objective')}")
             return {"requirement_data": requirement_data}
         except Exception as e:
@@ -140,7 +144,7 @@ class GraphOrchestrator:
     # ── 节点2：课程规划 ──
     def _node_plan(self, state: LearningState) -> dict:
         """基于需求数据生成学习计划（支持再生反馈）"""
-        requirement = state.get("requirement_data", {})
+        requirement = state.get("requirement_data") or {}
 
         if not requirement.get("learning_objective"):
             logger.warning("[plan] 缺少学习目标，跳过规划")
@@ -157,8 +161,11 @@ class GraphOrchestrator:
             }
 
         try:
-            plan_data = self.planner.plan(requirement)
-            stage_count = plan_data.get("learning_path", {}).get("stage_count", 0)
+            plan_data = self.planner.plan(requirement) or {}
+            # learning_path 可能是 None 或非字典（LLM 输出漂移），不能链式 .get
+            learning_path = plan_data.get("learning_path")
+            stage_count = (learning_path.get("stage_count", 0)
+                           if isinstance(learning_path, dict) else 0)
             logger.info(f"[plan] 生成 {stage_count} 个阶段")
             return {"plan_data": plan_data, "assessment_feedback_for_regeneration": ""}
         except Exception as e:
@@ -168,15 +175,15 @@ class GraphOrchestrator:
     # ── 节点3：资源推荐（与评估并行）──
     def _node_recommend(self, state: LearningState) -> dict:
         """推荐学习资源"""
-        requirement = state.get("requirement_data", {})
-        plan = state.get("plan_data", {})
+        requirement = state.get("requirement_data") or {}
+        plan = state.get("plan_data") or {}
 
         if plan.get("error") or requirement.get("error"):
             logger.warning("[recommend] 上游数据无效，跳过推荐")
             return {"resource_data": {"resources": [], "rag_info": {}}}
 
         try:
-            resource_data = self.recommender.recommend(requirement, plan)
+            resource_data = self.recommender.recommend(requirement, plan) or {}
             res_count = len(resource_data.get("resources", []))
             rag = resource_data.get("rag_info", {})
             logger.info(f"[recommend] 推荐 {res_count} 个资源 | 来源: {rag.get('source_info', 'N/A')}")
@@ -188,8 +195,8 @@ class GraphOrchestrator:
     # ── 节点4：评估反馈（与推荐并行）──
     def _node_assess(self, state: LearningState) -> dict:
         """评估学习计划"""
-        requirement = state.get("requirement_data", {})
-        plan = state.get("plan_data", {})
+        requirement = state.get("requirement_data") or {}
+        plan = state.get("plan_data") or {}
 
         if plan.get("error") or requirement.get("error"):
             logger.warning("[assess] 上游数据无效，跳过评估")
@@ -200,18 +207,35 @@ class GraphOrchestrator:
             }}
 
         try:
-            assessment_data = self.assessor.assess(requirement, plan)
-            summary = assessment_data.get("assessment_summary", {})
-            scores = [v for k, v in summary.items() if isinstance(v, (int, float)) and k.endswith("_rating")]
+            assessment_data = self.assessor.assess(requirement, plan) or {}
+            summary = assessment_data.get("assessment_summary")
+            if not isinstance(summary, dict):
+                summary = {}
+                assessment_data["assessment_summary"] = summary
+            scores = [v for k, v in summary.items()
+                      if isinstance(v, (int, float)) and not isinstance(v, bool)
+                      and k.endswith("_rating")]
             avg_score = sum(scores) / len(scores) if scores else 0
             summary["score_average"] = round(avg_score, 1)
             logger.info(f"[assess] 综合评分: {summary.get('overall_rating')} (均分: {avg_score:.1f})")
             return {"assessment_data": assessment_data}
         except Exception as e:
             logger.error(f"[assess] 失败: {e}")
+            # 异常分支必须与正常分支同构，下游按固定字段取值，缺键会直接抛 KeyError
             return {"assessment_data": {
-                "assessment_summary": {"overall_rating": "评估失败", "score_average": 0},
+                "assessment_summary": {
+                    "overall_rating": "评估失败",
+                    "feasibility_rating": 0,
+                    "content_rating": 0,
+                    "time_rating": 0,
+                    "method_rating": 0,
+                    "progression_rating": 0,
+                    "personalization_rating": 0,
+                    "score_average": 0,
+                },
+                "assessment_metrics": [],
                 "adjustment_suggestions": [],
+                "recommendations": [],
             }}
 
     # ── 节点5：结果整合 + 再生控制 ──
@@ -219,10 +243,17 @@ class GraphOrchestrator:
         """整合所有Agent结果，并在节点内递增再生计数器（条件边函数无法持久化状态）"""
         logger.info("[merge] 整合结果...")
 
-        assessment = state.get("assessment_data", {})
-        summary = assessment.get("assessment_summary", {})
-        avg_score = summary.get("score_average", 0)
-        iteration = state.get("iteration_count", 0)
+        assessment = state.get("assessment_data") or {}
+        summary = assessment.get("assessment_summary")
+        if not isinstance(summary, dict):
+            summary = {}
+        # 下游用 f"{avg_score:.1f}" 格式化，脏数据（字符串/None/bool）会让 merge 节点整个崩掉
+        raw_score = summary.get("score_average", 0)
+        avg_score = (raw_score if isinstance(raw_score, (int, float))
+                     and not isinstance(raw_score, bool) else 0)
+        raw_iteration = state.get("iteration_count", 0)
+        iteration = (raw_iteration if isinstance(raw_iteration, int)
+                     and not isinstance(raw_iteration, bool) else 0)
 
         # 判断是否需要再生，如果需要则递增计数器
         need_regenerate = (
@@ -234,13 +265,15 @@ class GraphOrchestrator:
             iteration += 1
 
         # 构建再生反馈
-        suggestions = assessment.get("adjustment_suggestions", [])
-        if suggestions:
-            feedback_parts = []
-            for s in suggestions[:3]:
+        suggestions = assessment.get("adjustment_suggestions") or []
+        feedback_parts = []
+        for s in suggestions[:3]:
+            # 建议项偶尔会是纯文本而不是对象，跳过即可，不能让 .get 抛异常
+            if isinstance(s, dict):
                 feedback_parts.append(
                     f"[{s.get('priority', '')}] {s.get('area', '')}: {s.get('suggestion', '')}"
                 )
+        if feedback_parts:
             feedback_text = "; ".join(feedback_parts)
         else:
             feedback_text = f"当前评分 {avg_score:.1f}/10 过低，请优化学习计划的深度、阶段划分和可执行性"
@@ -249,8 +282,8 @@ class GraphOrchestrator:
 
         return {
             "result": {
-                "requirement_data": state.get("requirement_data", {}),
-                "plan": state.get("plan_data", {}),
+                "requirement_data": state.get("requirement_data") or {},
+                "plan": state.get("plan_data") or {},
                 "resources": state.get("resource_data", {}),
                 "assessment": state.get("assessment_data", {}),
             },
@@ -268,6 +301,8 @@ class GraphOrchestrator:
         条件边函数只能**读取**状态，不能修改。
         """
         iteration = state.get("iteration_count", 0)
+        if not isinstance(iteration, int) or isinstance(iteration, bool):
+            iteration = 0
 
         # 读取 merge 节点设置的需要再生标志
         if state.get("_need_regenerate", False):
@@ -291,11 +326,16 @@ class GraphOrchestrator:
         Returns:
             编译后的可执行图
         """
+        # invoke() 在未编译时会补一次编译；多个请求同时进来时不能各编译一份
+        with self._compile_lock:
+            if self._compiled:
+                return self._graph
+            return self._compile_unlocked(enable_interrupt)
+
+    def _compile_unlocked(self, enable_interrupt: bool):
+        """真正构建状态图；调用方必须已持有 _compile_lock。"""
         if not LANGGRAPH_AVAILABLE:
             raise RuntimeError("langgraph 未安装，请运行: pip install langgraph langgraph-checkpoint")
-
-        if self._compiled:
-            return self._graph
 
         logger.info("构建 LangGraph 状态图...")
 
@@ -382,7 +422,7 @@ class GraphOrchestrator:
             try:
                 graph_state = self._graph.get_state(invoke_config) if invoke_config else self._graph.get_state()
                 if graph_state.next:
-                    result = final_state.get("result", {})
+                    result = final_state.get("result") or {}
                     result["_paused_for_review"] = True
                     result["_state_id"] = str(graph_state.config) if hasattr(graph_state, 'config') else ""
                     result["_meta"] = {
@@ -399,7 +439,7 @@ class GraphOrchestrator:
                 pass
 
         # 返回结构化的结果
-        result = final_state.get("result", {})
+        result = final_state.get("result") or {}
         if final_state.get("error"):
             result["error"] = final_state["error"]
 
@@ -417,6 +457,15 @@ class GraphOrchestrator:
         }, ensure_ascii=False))
 
         return result
+
+    # ── 异步便捷方法 ──
+    async def ainvoke(self, user_input: str) -> Dict[str, Any]:
+        """异步执行完整流程：把阻塞的 invoke() 放到线程池，避免阻塞事件循环。
+
+        API 层（FastAPI 的 async 路由）用 await orchestrator.ainvoke(...) 调用；
+        CLI、单测、脚本继续用同步 invoke()，两者行为完全一致。
+        """
+        return await asyncio.to_thread(self.invoke, user_input)
 
     def get_agent_metrics(self) -> Dict[str, Dict[str, Any]]:
         """获取所有Agent的性能指标"""

@@ -14,7 +14,7 @@
 import os
 import json
 import threading
-from queue import Queue
+from queue import Queue, Empty
 from typing import Dict, Any, Optional, Tuple
 
 # 导入子Agent
@@ -89,7 +89,10 @@ class LearningPlanningCoordinator:
                         "feasibility_rating": 0,
                         "content_rating": 0,
                         "time_rating": 0,
-                        "method_rating": 0
+                        "method_rating": 0,
+                        "progression_rating": 0,
+                        "personalization_rating": 0,
+                        "score_average": 0
                     },
                     "assessment_metrics": [],
                     "adjustment_suggestions": [],
@@ -111,8 +114,12 @@ class LearningPlanningCoordinator:
         resource_result = None
         assessment_result = None
         
-        while not results.empty():
-            key, value, status = results.get()
+        # empty() 只是瞬时快照，不能当「已取完」的判据；join 之后取到 Empty 才收尾
+        while True:
+            try:
+                key, value, status = results.get_nowait()
+            except Empty:
+                break
             if key == 'resource':
                 resource_result = value
                 # status logged
@@ -249,7 +256,8 @@ class LearningPlanningCoordinator:
         print(f"  • 课程规划: {self.planner.__class__.__name__}")
         print(f"  • 资源推荐: {self.recommender.__class__.__name__}")
         print(f"  • 评估反馈: {self.assessor.__class__.__name__}")
-        print(f"Hermes Sync: {'已启用' if self.hermes_sync else '未启用'}")
+        # Hermes 已从系统中移除，实例上不再有该属性；不能让状态打印把 CLI 直接搞崩
+        print(f"Hermes Sync: {'已启用' if getattr(self, 'hermes_sync', None) else '未启用'}")
         print("="*70 + "\n")
 
 

@@ -195,14 +195,20 @@ class CoursePlannerAgent(BaseAgent):
         LLM有时即使prompt要求不能返回"信息不足"，仍会在某些字段中写入。
         此方法检测并替换这些残留。
         """
-        learning_obj = requirement.get("learning_objective", "目标内容")
+        learning_obj = requirement.get("learning_objective") or "目标内容"
+
+        # LLM 有时把字段写成 null / 数字；先归一化成字符串，
+        # 否则 .startswith 抛异常，会被 plan() 的宽泛 except 吞掉整份有效结果
+        for key in ("goal_feasibility", "estimated_duration"):
+            if not isinstance(result.get(key), str):
+                result[key] = ""
 
         # 修复 goal_feasibility
-        if result.get("goal_feasibility", "").startswith("信息不足"):
+        if result["goal_feasibility"].startswith("信息不足"):
             result["goal_feasibility"] = f"基于「{learning_obj}」的学习计划，目标明确且可行"
 
         # 修复 estimated_duration
-        if result.get("estimated_duration", "").startswith("信息不足"):
+        if result["estimated_duration"].startswith("信息不足"):
             time_expectation = requirement.get("time_expectation", "标准学习")
             duration_map = {
                 "快速入门": "约1周",
@@ -212,10 +218,14 @@ class CoursePlannerAgent(BaseAgent):
             }
             result["estimated_duration"] = duration_map.get(time_expectation, "约1-3个月")
 
-        # 修复空的 stages
-        stages = result.get("learning_path", {}).get("stages", [])
-        if not stages or len(stages) == 0:
-            result["learning_path"]["stages"] = [
+        # 修复空的 stages：learning_path 缺失/null/非字典时先补齐，避免下标抛 KeyError
+        learning_path = result.get("learning_path")
+        if not isinstance(learning_path, dict):
+            learning_path = {}
+            result["learning_path"] = learning_path
+        stages = learning_path.get("stages")
+        if not isinstance(stages, list) or len(stages) == 0:
+            learning_path["stages"] = [
                 {
                     "stage_name": f"第一阶段：{learning_obj}基础入门",
                     "study_content": f"学习{learning_obj}的核心概念和基础知识",
@@ -235,7 +245,7 @@ class CoursePlannerAgent(BaseAgent):
                     "milestone": f"具备独立完成{learning_obj}相关项目的能力",
                 },
             ]
-            result["learning_path"]["stage_count"] = len(result["learning_path"]["stages"])
+            learning_path["stage_count"] = len(learning_path["stages"])
 
     def process(self, requirement_data: Dict) -> Dict:
         """
