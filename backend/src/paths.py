@@ -13,6 +13,9 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 # 运行期数据目录
 DATA_DIR = BACKEND_ROOT / "data"
 
+# 服务运行日志（启动时自动创建，已被 gitignore）
+LOG_DIR = BACKEND_ROOT / "logs"
+
 # 评测集与评测结果
 EVAL_DATA_DIR = DATA_DIR / "evaluation"
 
