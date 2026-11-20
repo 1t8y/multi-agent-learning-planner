@@ -206,7 +206,7 @@ async function main() {
     let appeared = false;
     while (Date.now() - waitStarted < 90000) {
       const state = await cdp.evaluate(`({
-        done: !!document.querySelector('h3') && document.body.innerText.includes('推荐资源'),
+        done: !!document.querySelector('.result') && document.body.innerText.includes('评估反馈'),
         failed: document.body.innerText.includes('生成失败'),
         text: document.body.innerText.slice(0, 400),
       })`);
@@ -223,14 +223,13 @@ async function main() {
     if (!appeared) throw new Error('等待结果超时');
 
     await sleep(900);
-    // 结果刚出来时页面在顶部，稍微往下让「需求分析 / 课程规划」并排出现
+    // 结果刚出来时页面在顶部：落到「需求分析」标题上方，让四块记录的第一块完整入镜
     await cdp.evaluate(`(() => {
-      const el = [...document.querySelectorAll('h2, h3, div')].find(
-        (e) => e.textContent.trim().startsWith('学习规划已生成'));
-      if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 60, behavior: 'instant' });
+      const el = document.querySelector('.result');
+      if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 88, behavior: 'instant' });
     })()`);
     await sleep(1200);
-    await shot('需求分析五字段 + 课程规划周期');
+    await shot('需求分析五字段 + 课程规划概要');
 
     // 依次滚到各区块
     const scrollTo = async (needle, offset = 0) =>
@@ -244,24 +243,24 @@ async function main() {
         return true;
       })()`);
 
-    if (await scrollTo('学习路径', 110)) {
+    if (await scrollTo('课程规划', 96)) {
       await sleep(2200);
-      await shot('阶段化学习计划（4 阶段，含每周任务）');
+      await shot('阶段化学习路径（编号台账：阶段 / 时长 / 学习内容 / 阶段目标）');
     }
 
-    // 诊断条在「推荐资源」标题上方，定位到它才能把来源/质量/候选/重排一起框进来
-    if (await scrollTo('检索来源', 100)) {
+    // 资源区顶部那行是检索来源，滚到区块标题能看到来源 + 绑定关系 + 第一条资源
+    if (await scrollTo('资源推荐', 96)) {
       await sleep(2400);
-      await shot('资源列表 + RAG 诊断条（来源 / 质量 / 候选 / 重排）');
+      await shot('资源列表与检索来源（知识库 / 匹配度 / 是否联网）');
     }
 
-    if (await scrollTo('整体评估', 140)) {
+    if (await scrollTo('评估反馈', 96)) {
       await sleep(2200);
-      await shot('六维评估与评估指标');
+      await shot('评估反馈：整体评分 + 四维评分 + 逐阶段指标');
     }
 
     // 回到资源区做一次反馈
-    await scrollTo('检索来源', 100);
+    await scrollTo('资源推荐', 96);
     await sleep(900);
     const opened = await cdp.evaluate(`(() => {
       const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('评价此资源'));
@@ -276,9 +275,8 @@ async function main() {
 
     // 打 5 星
     const rated = await cdp.evaluate(`(() => {
-      const box = [...document.querySelectorAll('div')].find((d) => d.textContent.trim().startsWith('评分：') && d.querySelectorAll('button').length === 5);
-      if (!box) return false;
-      const stars = [...box.querySelectorAll('button')];
+      const stars = [...document.querySelectorAll('.stars__btn')];
+      if (stars.length !== 5) return false;
       stars[4].click();
       return stars.length;
     })()`);
@@ -295,7 +293,7 @@ async function main() {
     })()`);
     if (!submitted) throw new Error('没找到「有用」按钮');
 
-    await waitForText(cdp, '已记录为', 20000, '反馈成功');
+    await waitForText(cdp, '已记下', 20000, '反馈成功');
     await sleep(1500);
     await shot('反馈提交成功：评分与反馈条数已回写（真实写入后端）');
 
