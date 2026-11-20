@@ -110,3 +110,6 @@ Thumbs.db
 .mcp.json
 opencode.jsonc
 .qoder/
+
+# 前端设计评审的截图与记录（本地过程产物，不入库）
+frontend/.hallmark/

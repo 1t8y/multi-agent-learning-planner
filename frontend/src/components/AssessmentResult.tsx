@@ -1,18 +1,11 @@
-// 评估反馈结果：总分 + 四维评分、逐阶段指标、调整建议、综合建议。
-import { Star, TrendingUp, AlertTriangle, Lightbulb } from 'lucide-react';
+// 评估反馈结果：总分与四维评分、逐阶段指标、调整建议、综合建议。
+import { Fragment } from 'react';
 import type { AssessmentData } from '../types';
 
 interface AssessmentResultProps {
   /** 评估 Agent 的输出；score_average 低于 6 时后端会自动重规划，前端只展示最终结果 */
   data: AssessmentData;
 }
-
-// 建议优先级 → 圆点颜色；后端可能给中文或其它值，未命中时回落灰色
-const priorityColors: Record<string, string> = {
-  '高': 'bg-red-500',
-  '中': 'bg-yellow-500',
-  '低': 'bg-green-500',
-};
 
 /**
  * 学习方案评估展示。
@@ -23,100 +16,80 @@ const priorityColors: Record<string, string> = {
 export function AssessmentResult({ data }: AssessmentResultProps) {
   const { assessment_summary, assessment_metrics, adjustment_suggestions, recommendations } = data;
 
+  const stats = [
+    { label: '可行性', value: assessment_summary.feasibility_rating },
+    { label: '内容性', value: assessment_summary.content_rating },
+    { label: '时间性', value: assessment_summary.time_rating },
+    { label: '方法性', value: assessment_summary.method_rating },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-xl p-5 border border-amber-100">
-        <div className="flex items-center gap-3 mb-4">
-          <Star className="w-6 h-6 text-amber-500" />
-          <span className="font-semibold text-gray-800">整体评估</span>
+    <div className="assessment">
+      <dl className="score">
+        <div className="score__lead">
+          <dt className="score__label">整体评估</dt>
+          <dd className="score__rating">{assessment_summary.overall_rating}</dd>
         </div>
-        <div className="flex items-center gap-4 mb-4">
-          <span className="text-3xl font-bold text-amber-600">{assessment_summary.overall_rating}</span>
-          <div className="flex-1 grid grid-cols-2 gap-2">
-            <div className="text-center p-2 bg-white rounded-lg">
-              <p className="text-2xl font-bold text-primary-600">{assessment_summary.feasibility_rating}</p>
-              <p className="text-xs text-gray-500">可行性</p>
+        <div className="score__stats">
+          {stats.map((stat) => (
+            <div className="stat" key={stat.label}>
+              <dt className="stat__label">{stat.label}</dt>
+              <dd className="stat__num">{stat.value}</dd>
             </div>
-            <div className="text-center p-2 bg-white rounded-lg">
-              <p className="text-2xl font-bold text-primary-600">{assessment_summary.content_rating}</p>
-              <p className="text-xs text-gray-500">内容性</p>
-            </div>
-            <div className="text-center p-2 bg-white rounded-lg">
-              <p className="text-2xl font-bold text-primary-600">{assessment_summary.time_rating}</p>
-              <p className="text-xs text-gray-500">时间性</p>
-            </div>
-            <div className="text-center p-2 bg-white rounded-lg">
-              <p className="text-2xl font-bold text-primary-600">{assessment_summary.method_rating}</p>
-              <p className="text-xs text-gray-500">方法性</p>
-            </div>
-          </div>
+          ))}
         </div>
-      </div>
+      </dl>
 
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-green-500" />
-          <span className="font-semibold text-gray-800">评估指标</span>
-        </div>
-        <div className="space-y-3">
+      <div className="block">
+        <h3 className="block__title">评估指标</h3>
+        <div className="metrics">
           {assessment_metrics.map((item, index) => (
-            <div key={index} className="bg-white rounded-xl p-4 border border-gray-100">
-              <h4 className="font-semibold text-gray-800 mb-3">{item.phase}</h4>
-              <div className="space-y-2">
+            <div className="metrics__group" key={index}>
+              <h4 className="metrics__phase">{item.phase}</h4>
+              <dl className="metrics__rows">
                 {item.metrics.map((metric, mIndex) => (
-                  <div key={mIndex} className="flex items-center gap-3 text-sm">
-                    <span className="font-medium text-gray-700">{metric.name}</span>
-                    <span className="text-gray-500">-</span>
-                    <span className="text-gray-600">{metric.description}</span>
-                  </div>
+                  <Fragment key={mIndex}>
+                    <dt>{metric.name}</dt>
+                    <dd>{metric.description}</dd>
+                  </Fragment>
                 ))}
-              </div>
+              </dl>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="w-5 h-5 text-orange-500" />
-          <span className="font-semibold text-gray-800">调整建议</span>
-        </div>
-        <div className="space-y-3">
+      <div className="block">
+        <h3 className="block__title">调整建议</h3>
+        <div className="advice">
           {adjustment_suggestions.map((suggestion, index) => (
-            <div key={index} className="bg-white rounded-xl p-4 border border-gray-100">
-              <div className="flex items-center gap-2 mb-2">
-                <span className={`w-2 h-2 ${priorityColors[suggestion.priority] || 'bg-gray-400'} rounded-full`} />
-                <span className="font-semibold text-gray-800">{suggestion.area}</span>
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                  {suggestion.priority}优先级
-                </span>
+            <div className="advice__item" key={index}>
+              <div className="advice__head">
+                <h4 className="advice__area">{suggestion.area}</h4>
+                <span className="advice__prio">{suggestion.priority}优先级</span>
               </div>
-              <p className="text-sm text-gray-600 mb-1">
-                <span className="text-gray-500">问题：</span>{suggestion.issue}
+              <p className="advice__line">
+                <span className="advice__key">问题</span>
+                {suggestion.issue}
               </p>
-              <p className="text-sm text-primary-600">
-                <span className="text-gray-500">建议：</span>{suggestion.suggestion}
+              <p className="advice__line">
+                <span className="advice__key">建议</span>
+                <span className="advice__fix">{suggestion.suggestion}</span>
               </p>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Lightbulb className="w-5 h-5 text-yellow-500" />
-          <span className="font-semibold text-gray-800">综合建议</span>
-        </div>
-        <div className="space-y-2">
+      <div className="block">
+        <h3 className="block__title">综合建议</h3>
+        <ol className="tips">
           {recommendations.map((rec, index) => (
-            <div key={index} className="flex items-start gap-3 bg-white rounded-xl p-4 border border-gray-100">
-              <span className="w-6 h-6 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0">
-                {index + 1}
-              </span>
-              <p className="text-gray-700">{rec}</p>
-            </div>
+            <li className="tips__item" key={index}>
+              <span>{rec}</span>
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
     </div>
   );

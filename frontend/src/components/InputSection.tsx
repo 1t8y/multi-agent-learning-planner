@@ -1,7 +1,6 @@
 // 输入区：文本框 + 提交按钮 + 清除按钮。
 // 这里是 /api/plan 的唯一触发点，负责管理加载态与错误提示。
 import { useState } from 'react';
-import { Wand2, Loader2, X } from 'lucide-react';
 import { usePlanStore } from '../store/planStore';
 import { generateLearningPlan } from '../utils/api';
 
@@ -62,56 +61,55 @@ export function InputSection() {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-2xl p-6 md:p-8 card-shadow mb-8">
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <label className="block text-gray-700 font-semibold">
-            请输入您的学习需求
-          </label>
-          {(inputValue || planResult) && (
-            <button
-              onClick={handleClear}
-              className="flex items-center gap-1 text-sm text-gray-400 hover:text-red-500 transition-colors"
-            >
-              <X className="w-4 h-4" />
-              清除
-            </button>
-          )}
-        </div>
+    <div className="request">
+      <div className="request__head">
+        <label className="field__label" htmlFor="learning-request">
+          你的学习需求
+        </label>
+
+        {(inputValue || planResult) && (
+          <button type="button" className="btn btn--quiet btn--sm" onClick={handleClear}>
+            清除
+          </button>
+        )}
+      </div>
+
+      <div className="field">
         <textarea
+          id="learning-request"
+          name="learning-request"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="例如：我是零基础，每天可以学习2小时，想学习Python编程，喜欢视频学习方式..."
-          className="w-full h-32 p-4 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent transition-all duration-300 text-gray-700 placeholder-gray-400"
+          disabled={isLoading}
+          placeholder="例如：我是零基础，每天可以学习 2 小时，想学 Python 编程，喜欢视频学习"
+          className="field__input"
+          aria-describedby="learning-request-help"
         />
-        <p className="text-sm text-gray-400 mt-2">
-          按 Ctrl + Enter 快速生成
-        </p>
       </div>
 
-      <button
-        onClick={handleSubmit}
-        disabled={isLoading || !inputValue.trim()}
-        className="w-full bg-gradient-primary text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-3 hover:opacity-90 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span>正在生成学习规划...</span>
-          </>
-        ) : planResult ? (
-          <>
-            <Wand2 className="w-5 h-5" />
+      <div className="request__foot">
+        <p className="request__help" id="learning-request-help">
+          按 Ctrl + Enter 也可以提交
+        </p>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={isLoading || !inputValue.trim()}
+          className="btn btn--primary"
+        >
+          {isLoading ? (
+            <>
+              <span className="btn__spin" aria-hidden="true" />
+              <span>正在生成…</span>
+            </>
+          ) : planResult ? (
             <span>重新生成学习规划</span>
-          </>
-        ) : (
-          <>
-            <Wand2 className="w-5 h-5" />
+          ) : (
             <span>生成学习规划</span>
-          </>
-        )}
-      </button>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

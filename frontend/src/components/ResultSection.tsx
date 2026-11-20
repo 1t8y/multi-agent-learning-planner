@@ -1,7 +1,6 @@
-// 结果区：四张卡片（需求 / 规划 / 资源 / 评估）的版式容器。
+// 结果区：四个区块（需求 / 规划 / 资源 / 评估）的版式容器。
 // 同时负责反馈提交后的统计刷新，以及「推荐资源」弹窗的开关。
 import { useState } from 'react';
-import { Target, Route, BookOpen, ClipboardCheck } from 'lucide-react';
 import { usePlanStore } from '../store/planStore';
 import { fetchResourceStats, submitFeedback } from '../utils/api';
 import { ResultCard } from './ResultCard';
@@ -10,25 +9,27 @@ import { PlanResult } from './PlanResult';
 import { ResourcesResult } from './ResourcesResult';
 import { AssessmentResult } from './AssessmentResult';
 import { ResourceSubmitModal } from './ResourceSubmitModal';
+import { LoadingSpinner } from './LoadingSpinner';
 import type { FeedbackSubmission, ResourceStats } from '../types';
 
 /**
  * 学习方案结果区。
  *
- * 没有结果时整块不渲染（返回 null），页面只剩输入区；
- * 这样「没生成过」和「生成失败」在视觉上不会混在一起。
+ * 三种状态：正在生成（骨架）、还没生成（说明会得到什么）、已生成（四个区块）。
+ * 「没生成过」和「生成失败」在视觉上不会混在一起，失败只由根组件的错误条表达。
  */
 export function ResultSection() {
-  const { planResult } = usePlanStore();
-  // 反馈提交后刷新的资源统计，按资源 ID 覆盖到卡片展示上
+  const { planResult, isLoading } = usePlanStore();
+  // 反馈提交后刷新的资源统计，按资源 ID 覆盖到区块展示上
   const [resourceStats, setResourceStats] = useState<Record<string, ResourceStats>>({});
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
 
   if (!planResult) {
-    return null;
+    return isLoading ? <LoadingSpinner /> : <EmptyState />;
   }
 
   const learningObjective = planResult.requirement_data?.learning_objective || '';
+  const resources = planResult.resources.resources || [];
 
   /**
    * 提交评分，并在成功后刷新该资源的统计。
@@ -57,56 +58,82 @@ export function ResultSection() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-white mb-2">学习规划已生成</h2>
-        <p className="text-white/80">以下是为您量身定制的学习方案</p>
-      </div>
+    <div className="result">
+      <ResultCard
+        title="需求分析"
+        aside={<span className="section__count" role="status">已生成</span>}
+      >
+        <RequirementResult data={planResult.requirement_data} />
+      </ResultCard>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ResultCard
-          title="需求分析"
-          icon={<Target className="w-5 h-5 text-white" />}
-          color="bg-gradient-to-r from-blue-500 to-indigo-600"
-        >
-          <RequirementResult data={planResult.requirement_data} />
-        </ResultCard>
+      <ResultCard
+        title="课程规划"
+        aside={<span className="section__count">共 {planResult.plan.learning_path.stage_count} 个阶段</span>}
+      >
+        <PlanResult data={planResult.plan} />
+      </ResultCard>
 
-        <ResultCard
-          title="课程规划"
-          icon={<Route className="w-5 h-5 text-white" />}
-          color="bg-gradient-to-r from-green-500 to-emerald-600"
-        >
-          <PlanResult data={planResult.plan} />
-        </ResultCard>
+      <ResultCard
+        title="资源推荐"
+        aside={
+          resources.length > 0 ? (
+            <>
+              <span className="section__count">共 {resources.length} 个</span>
+              <button type="button" className="btn btn--quiet btn--sm" onClick={handleAddResource}>
+                贡献新资源
+              </button>
+            </>
+          ) : null
+        }
+      >
+        <ResourcesResult
+          data={planResult.resources}
+          learningObjective={learningObjective}
+          onFeedbackSubmit={handleFeedbackSubmit}
+          onAddResource={handleAddResource}
+          resourceStats={resourceStats}
+        />
+      </ResultCard>
 
-        <ResultCard
-          title="资源推荐"
-          icon={<BookOpen className="w-5 h-5 text-white" />}
-          color="bg-gradient-to-r from-purple-500 to-pink-600"
-        >
-          <ResourcesResult 
-            data={planResult.resources} 
-            learningObjective={learningObjective}
-            onFeedbackSubmit={handleFeedbackSubmit}
-            onAddResource={handleAddResource}
-            resourceStats={resourceStats}
-          />
-        </ResultCard>
-
-        <ResultCard
-          title="评估反馈"
-          icon={<ClipboardCheck className="w-5 h-5 text-white" />}
-          color="bg-gradient-to-r from-orange-500 to-amber-600"
-        >
-          <AssessmentResult data={planResult.assessment} />
-        </ResultCard>
-      </div>
+      <ResultCard title="评估反馈">
+        <AssessmentResult data={planResult.assessment} />
+      </ResultCard>
 
       <ResourceSubmitModal
         open={submitModalOpen}
         onClose={() => setSubmitModalOpen(false)}
       />
+    </div>
+  );
+}
+
+/**
+ * 还没生成时的说明。
+ *
+ * 只陈述这个工具会返回什么，不放示例结果，避免把演示数据当成真实输出。
+ */
+function EmptyState() {
+  return (
+    <div className="empty">
+      <p className="empty__lead">生成后，这一屏会出现四块内容</p>
+      <ul className="empty__list">
+        <li className="empty__item">
+          <h2 className="empty__name">需求分析</h2>
+          <p className="empty__line">从你的一句话里抽出目标、基础、每天可用时间、学习偏好和时间期望。</p>
+        </li>
+        <li className="empty__item">
+          <h2 className="empty__name">课程规划</h2>
+          <p className="empty__line">按阶段拆开，每个阶段写明学习内容、时间分配和阶段目标。</p>
+        </li>
+        <li className="empty__item">
+          <h2 className="empty__name">资源推荐</h2>
+          <p className="empty__line">从知识库检索，覆盖不到时联网补充，并标明每条资源的来源。</p>
+        </li>
+        <li className="empty__item">
+          <h2 className="empty__name">评估反馈</h2>
+          <p className="empty__line">给方案打分，指出哪一步偏紧、该怎么调；均分低于 6 分会重新生成。</p>
+        </li>
+      </ul>
     </div>
   );
 }

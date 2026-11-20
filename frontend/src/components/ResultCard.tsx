@@ -1,32 +1,29 @@
-// 结果区通用卡片：统一标题栏样式，内容由调用方通过 children 传入。
+// 结果区通用区块：一条上墨线、一个标题、一段正文，内容由调用方通过 children 传入。
 import { ReactNode } from 'react';
 
 interface ResultCardProps {
-  /** 卡片标题，例如「学习需求」「学习路径」 */
+  /** 区块标题，例如「需求分析」「课程规划」 */
   title: string;
-  /** 标题栏左侧图标，直接传 lucide 图标元素 */
-  icon: ReactNode;
-  /** 标题栏背景色类名（Tailwind），不同模块用不同颜色区分 */
-  color: string;
-  /** 卡片正文内容 */
+  /** 标题右侧的补充事实或一个次要动作，没有就不渲染 */
+  aside?: ReactNode;
+  /** 区块正文内容 */
   children: ReactNode;
 }
 
 /**
- * 带彩色标题栏的内容卡片。
+ * 区块骨架。
  *
  * 只负责版式，不做任何数据裁剪：内容为空时由调用方决定怎么提示。
+ * 结果区不用卡片围栏，四个区块靠一条墨线和一个标题分开，读起来是一份记录。
  */
-export function ResultCard({ title, icon, color, children }: ResultCardProps) {
+export function ResultCard({ title, aside, children }: ResultCardProps) {
   return (
-    <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg overflow-hidden">
-      <div className={`${color} px-4 py-3 flex items-center gap-2`}>
-        {icon}
-        <h3 className="text-lg font-semibold text-white">{title}</h3>
+    <section className="section">
+      <div className="section__head">
+        <h2 className="section__title">{title}</h2>
+        {aside && <div className="section__tools">{aside}</div>}
       </div>
-      <div className="p-4 text-white/90">
-        {children}
-      </div>
-    </div>
+      {children}
+    </section>
   );
 }

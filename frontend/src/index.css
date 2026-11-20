@@ -1,36 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
-}
-
-@layer utilities {
-  .text-gradient {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  
-  .bg-gradient-primary {
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  }
-  
-  .card-shadow {
-    box-shadow: 0 10px 40px rgba(99, 102, 241, 0.15);
-  }
-  
-  .card-shadow-hover {
-    box-shadow: 0 20px 50px rgba(99, 102, 241, 0.25);
-  }
-}
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: Furrow (deal 1/3, seed study-planner-turns-one-dc73·9562c855·2026-11-18·r0) · redesign: full
+ * nav: top bar, the wordmark and one descriptor, no links · signature: the staged record, each stage a ruled row carrying its duration and milestone · states: loading, empty, error, full · axes: light/grotesk-sans/warm · posture: restrained · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H4 E4 S3 R5 V4 · weakest: S, the four regions keep the pipeline's own names; the shape is carried by the stage record, which no other planner shows with its durations and milestones */
+/* Hallmark · finish-review: subagent · 8 findings · 8 resolved · the survey ground is left out, an app screen takes the system and not the ornament */
+@import url("./tokens.css");
+@import url("./base.css");
+@import url("./app.css");

@@ -1,7 +1,6 @@
 // 「贡献新资源」弹窗：前端先做一遍白名单校验，再提交到 /api/resources/submit。
 // 提交成功后不会立刻出现在推荐里——要先进待审核队列，审核通过才入库。
 import { useEffect, useState } from 'react';
-import { X, Loader2, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
 import { submitResource } from '../utils/api';
 import type { ResourceSubmission } from '../types';
 
@@ -154,85 +153,88 @@ export function ResourceSubmitModal({ open, onClose }: ResourceSubmitModalProps)
     }
   };
 
-  const fieldClass =
-    'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100';
-
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 py-8 overflow-y-auto"
-      onClick={() => {
-        if (!submitting) {
-          onClose();
-        }
-      }}
+      className="dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="resource-dialog-title"
+      onClick={() => { if (!submitting) { onClose(); } }}
     >
-      <div
-        className="w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
+      <div className="dialog__sheet" onClick={(event) => event.stopPropagation()}>
+        <div className="dialog__head">
           <div>
-            <h3 className="text-lg font-bold text-gray-800">贡献新资源</h3>
-            <p className="text-xs text-gray-500 mt-1">
-              提交后进入待审核队列，审核通过才会加入知识库参与检索
-            </p>
+            <h2 className="dialog__title" id="resource-dialog-title">
+              贡献新资源
+            </h2>
+            <p className="dialog__note">先进入待审核队列，审核通过后才加入知识库参与检索。</p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             disabled={submitting}
-            className="text-gray-400 hover:text-gray-600 disabled:opacity-40"
+            className="dialog__close"
             aria-label="关闭"
           >
-            <X className="w-5 h-5" />
+            ×
           </button>
         </div>
 
         {submissionId && (
-          <div className="mb-4 flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2">
-            <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-            <div className="text-xs text-green-700">
-              <p className="font-medium">已提交，待审核</p>
-              <p className="mt-0.5 text-green-600/80 break-all">提交编号：{submissionId}</p>
-              <p className="mt-1 text-green-600/80">可以继续修改下表内容并再次提交。</p>
+          <div className="dialog__ok">
+            <div>
+              <p className="dialog__ok-title">已提交，待审核</p>
+              <p className="dialog__ok-id">提交编号 {submissionId}</p>
+              <p>可以继续修改下表内容并再次提交。</p>
             </div>
           </div>
         )}
 
-        <div className="space-y-3">
+        <div className="dialog__fields">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              资源标题 <span className="text-red-500">*</span>
+            <label className="dialog__label" htmlFor="res-title">
+              资源标题 <span className="dialog__req">*</span>
             </label>
             <input
+              id="res-title"
+              name="title"
               value={form.title}
               onChange={(event) => update({ title: event.target.value })}
               disabled={submitting}
               placeholder="例如：Python 官方教程"
-              className={fieldClass}
+              className="dialog__input"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              资源链接 <span className="text-red-500">*</span>
+            <label className="dialog__label" htmlFor="res-url">
+              资源链接 <span className="dialog__req">*</span>
             </label>
             <input
+              id="res-url"
+              name="url"
+              type="url"
+              inputMode="url"
               value={form.url}
               onChange={(event) => update({ url: event.target.value })}
               disabled={submitting}
               placeholder="https://example.com/course"
-              className={fieldClass}
+              className="dialog__input"
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="dialog__row">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">资源类型</label>
+              <label className="dialog__label" htmlFor="res-type">
+                资源类型
+              </label>
               <select
+                id="res-type"
+                name="resource_type"
                 value={form.resourceType}
                 onChange={(event) => update({ resourceType: event.target.value })}
                 disabled={submitting}
-                className={fieldClass}
+                className="dialog__select"
               >
                 {TYPE_OPTIONS.map((type) => (
                   <option key={type} value={type}>{type}</option>
@@ -240,12 +242,16 @@ export function ResourceSubmitModal({ open, onClose }: ResourceSubmitModalProps)
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">领域</label>
+              <label className="dialog__label" htmlFor="res-field">
+                领域
+              </label>
               <select
+                id="res-field"
+                name="field"
                 value={form.field}
                 onChange={(event) => update({ field: event.target.value })}
                 disabled={submitting}
-                className={fieldClass}
+                className="dialog__select"
               >
                 {FIELD_OPTIONS.map((field) => (
                   <option key={field} value={field}>{field}</option>
@@ -253,12 +259,16 @@ export function ResourceSubmitModal({ open, onClose }: ResourceSubmitModalProps)
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">难度</label>
+              <label className="dialog__label" htmlFor="res-level">
+                难度
+              </label>
               <select
+                id="res-level"
+                name="level"
                 value={form.level}
                 onChange={(event) => update({ level: event.target.value })}
                 disabled={submitting}
-                className={fieldClass}
+                className="dialog__select"
               >
                 {LEVEL_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -268,51 +278,47 @@ export function ResourceSubmitModal({ open, onClose }: ResourceSubmitModalProps)
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">描述</label>
+            <label className="dialog__label" htmlFor="res-description">
+              描述
+            </label>
             <textarea
+              id="res-description"
+              name="description"
               value={form.description}
               onChange={(event) => update({ description: event.target.value })}
               disabled={submitting}
-              placeholder="这个资源讲什么、适合谁…"
-              className={`${fieldClass} resize-none h-20`}
+              placeholder="这个资源讲什么、适合谁"
+              className="dialog__area"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              标签 <span className="text-gray-400 font-normal">（用逗号分隔，可留空）</span>
+            <label className="dialog__label" htmlFor="res-tags">
+              标签 <span className="dialog__hint">用逗号分隔，可留空</span>
             </label>
             <input
+              id="res-tags"
+              name="tags"
               value={form.tags}
               onChange={(event) => update({ tags: event.target.value })}
               disabled={submitting}
               placeholder="Python, 零基础, 视频"
-              className={fieldClass}
+              className="dialog__input"
             />
           </div>
 
           {errorMessage && (
-            <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
-              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
-              <p className="text-xs text-red-600">提交失败：{errorMessage}</p>
+            <div className="notice" role="alert">
+              提交失败：{errorMessage}
             </div>
           )}
         </div>
 
-        <div className="flex gap-2 mt-5">
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors disabled:opacity-50"
-          >
+        <div className="dialog__foot">
+          <button type="button" onClick={onClose} disabled={submitting} className="btn btn--quiet">
             关闭
           </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm bg-gradient-primary text-white font-semibold rounded-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+          <button type="button" onClick={handleSubmit} disabled={submitting} className="btn btn--primary">
             {submitting ? '提交中…' : '提交待审核'}
           </button>
         </div>

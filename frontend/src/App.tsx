@@ -1,5 +1,5 @@
 // 根组件：只负责页面骨架与错误条展示，业务状态全部走 planStore。
-// 页面自上而下是：标题 → 输入区 → 错误提示（有才显示）→ 结果区 → 页脚。
+// 页面自上而下是：顶栏 → 输入区 → 错误提示（有才显示）→ 结果区 → 页脚。
 import { Header } from './components/Header';
 import { InputSection } from './components/InputSection';
 import { ResultSection } from './components/ResultSection';
@@ -15,24 +15,28 @@ function App() {
   const { error } = usePlanStore();
 
   return (
-    <div className="min-h-screen py-8 px-4">
-      <div className="max-w-6xl mx-auto">
-        <Header />
-        
-        <InputSection />
+    <div className="app">
+      <Header />
 
-        {error && (
-          <div className="bg-red-100 border border-red-300 text-red-700 px-4 py-3 rounded-lg mb-8">
-            {error}
-          </div>
-        )}
+      <main className="main" id="main">
+        <div className="shell">
+          <InputSection />
 
-        <ResultSection />
+          {error && (
+            <div className="notice" role="alert">
+              {error}
+            </div>
+          )}
 
-        <footer className="text-center mt-12 text-white/60 text-sm">
-          <p>基于多智能体协作技术 · 为您提供个性化学习规划</p>
-        </footer>
-      </div>
+          <ResultSection />
+        </div>
+      </main>
+
+      <footer className="colophon">
+        <div className="shell">
+          <p>评估均分低于 6 分时自动重新规划，最多 3 轮。</p>
+        </div>
+      </footer>
     </div>
   );
 }

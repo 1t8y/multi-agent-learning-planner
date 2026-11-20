@@ -1,5 +1,4 @@
-// 资源推荐结果：检索自述信息条 + 资源卡片列表 + 贡献入口。
-import { Video, FileText, Code, BookOpen, ExternalLink, Plus, Database, Globe, Bot, Star } from 'lucide-react';
+// 资源推荐结果：检索来源一行 + 资源条目列表 + 贡献入口。
 import type { ResourcesDataWithRag, Resource, FeedbackSubmission, ResourceStats } from '../types';
 import { ResourceFeedback } from './ResourceFeedback';
 
@@ -12,100 +11,61 @@ interface ResourcesResultProps {
   resourceStats?: Record<string, ResourceStats>;
 }
 
-// 资源类型 → 图标 / 配色。后端类型只认这四种，新增类型会落到灰色兜底样式
-const typeIcons: Record<string, React.ReactNode> = {
-  '视频教程': <Video className="w-5 h-5" />,
-  '文字教程': <FileText className="w-5 h-5" />,
-  '实战项目': <Code className="w-5 h-5" />,
-  '文档资料': <BookOpen className="w-5 h-5" />,
-};
-
-const typeColors: Record<string, string> = {
-  '视频教程': 'bg-blue-50 text-blue-600',
-  '文字教程': 'bg-green-50 text-green-600',
-  '实战项目': 'bg-orange-50 text-orange-600',
-  '文档资料': 'bg-purple-50 text-purple-600',
-};
-
-// 来源 → 图标 / 中文名。知识库、联网、LLM 生成的资源在视觉上要能一眼区分
-const sourceIcons: Record<string, React.ReactNode> = {
-  'knowledge_base': <Database className="w-3.5 h-3.5" />,
-  'web_search': <Globe className="w-3.5 h-3.5" />,
-  'LLM生成': <Bot className="w-3.5 h-3.5" />,
-};
-
+// 来源 → 中文名。知识库、联网、LLM 生成的资源要能一眼区分
 const sourceLabels: Record<string, string> = {
   'knowledge_base': '知识库',
   'web_search': '网络搜索',
-  'LLM生成': 'AI推荐',
+  'LLM生成': 'AI 推荐',
 };
 
 /**
  * 资源列表。
  *
- * 顶部那条 rag_info 不是装饰：它说明这批结果是走知识库、联网还是纯 LLM 生成，
- * 以及检索质量与是否重排过。演示和排障时都靠它解释「为什么推了这些」。
+ * 顶部那行检索信息不是装饰：它说明这批结果是走知识库、联网还是纯 LLM 生成。
+ * 演示和排障要用的细节（候选条数、是否重排）收在「检索详情」里，不占正文。
  */
 export function ResourcesResult({ data, learningObjective, onFeedbackSubmit, onAddResource, resourceStats }: ResourcesResultProps) {
   const resources = data.resources || [];
   const ragInfo = data.rag_info;
 
   return (
-    <div className="space-y-4">
+    <div className="resources">
       {ragInfo && (
-        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-3 mb-4">
-          <div className="flex items-center justify-between text-sm">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span className="text-gray-600">
-                <span className="font-medium text-indigo-600">检索来源：</span>
-                {ragInfo.source_info || 'AI生成'}
-              </span>
-              <span className="text-gray-600">
-                <span className="font-medium text-indigo-600">知识库匹配度：</span>
-                {(ragInfo.kb_relevance * 100).toFixed(0)}%
-              </span>
+        <div className="provenance">
+          <p className="provenance__row">
+            <span className="provenance__item">
+              检索来源 <span className="provenance__value">{ragInfo.source_info || 'AI 生成'}</span>
+            </span>
+            <span className="provenance__item">
+              知识库匹配度 <span className="provenance__value">{Math.round(ragInfo.kb_relevance * 100)}%</span>
+            </span>
+            {ragInfo.used_web_search && <span className="provenance__item">已联网搜索补充</span>}
+          </p>
+
+          <details className="provenance__fold">
+            <summary>检索详情</summary>
+            <p className="provenance__more">
               {ragInfo.quality && (
-                <span className="text-gray-600">
-                  <span className="font-medium text-indigo-600">检索质量：</span>
+                <>
+                  检索质量
                   {ragInfo.quality.grade === 'high' ? '高' : ragInfo.quality.grade === 'medium' ? '中' : '低'}
-                  （{(ragInfo.quality.score * 100).toFixed(0)}%）
-                </span>
+                  （{Math.round(ragInfo.quality.score * 100)}%）
+                </>
               )}
-              {typeof ragInfo.candidate_count === 'number' && (
-                <span className="text-gray-600">
-                  <span className="font-medium text-indigo-600">候选：</span>
-                  {ragInfo.candidate_count} 条
-                </span>
-              )}
-              {ragInfo.rerank?.available && (
-                <span className="text-emerald-700">Cross-Encoder 已重排</span>
-              )}
-            </div>
-            {ragInfo.used_web_search && (
-              <span className="flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs">
-                <Globe className="w-3 h-3" />
-                已联网搜索补充
-              </span>
-            )}
-          </div>
+              {typeof ragInfo.candidate_count === 'number' && <>；候选 {ragInfo.candidate_count} 条</>}
+              {ragInfo.rerank?.available && <>；Cross-Encoder 已重排</>}
+              {ragInfo.rewrite_count > 0 && <>；查询改写 {ragInfo.rewrite_count} 次</>}
+            </p>
+          </details>
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-gray-700">推荐资源（{resources.length}个）</h3>
-        <button
-          onClick={onAddResource}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          贡献新资源
-        </button>
-      </div>
-
       {resources.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-50" />
-          <p>暂无推荐资源</p>
+        <div className="res-empty">
+          <p className="res-empty__line">这次没有匹配到资源，可以补一条你知道的。</p>
+          <button type="button" className="btn btn--quiet btn--sm" onClick={onAddResource}>
+            贡献新资源
+          </button>
         </div>
       ) : (
         resources.map((resource, index) => (
@@ -119,11 +79,7 @@ export function ResourcesResult({ data, learningObjective, onFeedbackSubmit, onA
         ))
       )}
 
-      <div className="text-center mt-4 pt-3 border-t border-gray-100">
-        <p className="text-xs text-gray-400">
-          资源推荐基于AI智能检索，您的反馈将帮助优化推荐质量
-        </p>
-      </div>
+      <p className="fineprint">反馈会更新这条资源的评分，也会影响下一次推荐时它的排序。</p>
     </div>
   );
 }
@@ -136,7 +92,7 @@ interface ResourceCardProps {
 }
 
 /**
- * 单条资源卡片。
+ * 单条资源。
  *
  * 展示的评分优先用 stats（反馈后重新拉到的实时值），
  * 没有就退回 resource 自带的那份（/api/plan 返回时的快照）。
@@ -149,65 +105,68 @@ function ResourceCard({ resource, learningObjective, onFeedbackSubmit, stats }: 
   const feedbackCount = shown.feedback_count ?? 0;
 
   return (
-    <div
-      className="bg-white rounded-xl p-4 border border-gray-100 hover:shadow-md transition-all duration-300"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 ${typeColors[resource.type] || 'bg-gray-50 text-gray-600'} rounded-lg flex items-center justify-center`}>
-            {typeIcons[resource.type] || <BookOpen className="w-5 h-5" />}
-          </div>
-          <div>
-            <a
-              href={resource.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-primary-600 hover:text-primary-700 hover:underline flex items-center gap-1"
-            >
-              {resource.title}
-              <ExternalLink className="w-4 h-4" />
-            </a>
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`text-xs px-2 py-1 rounded-full ${typeColors[resource.type] || 'bg-gray-100 text-gray-600'}`}>
-                {resource.type}
-              </span>
-              {resource.source && (
-                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600 flex items-center gap-1">
-                  {sourceIcons[resource.source]}
-                  {sourceLabels[resource.source] || resource.source}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="text-right">
-          {resource.rank && <p className="text-sm text-indigo-500">排序：#{resource.rank}</p>}
-          {typeof resource.rerank_confidence === 'number' && (
-            <p className="text-xs text-gray-400">重排置信度：{(resource.rerank_confidence * 100).toFixed(0)}%</p>
-          )}
-          <p className="text-sm text-gray-500">难度：{resource.difficulty}</p>
-          <p className="text-sm text-gray-500">时长：{resource.duration}</p>
-          {feedbackCount > 0 && (
-            <p className="text-xs text-amber-600 flex items-center justify-end gap-1 mt-1">
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-              {Number(shown.rating ?? 0).toFixed(1)}（{feedbackCount} 条反馈）
-            </p>
-          )}
-        </div>
+    <article className="res">
+      <div className="res__head">
+        <h3 className="res__title">
+          <a href={resource.url} target="_blank" rel="noopener noreferrer">
+            {resource.title}
+          </a>
+        </h3>
+        {(resource.rank || typeof resource.rerank_confidence === 'number') && (
+          <p className="res__internal">
+            {resource.rank ? `排序 #${resource.rank}` : ''}
+            {resource.rank && typeof resource.rerank_confidence === 'number' ? '，' : ''}
+            {typeof resource.rerank_confidence === 'number'
+              ? `重排置信度 ${Math.round(resource.rerank_confidence * 100)}%`
+              : ''}
+          </p>
+        )}
       </div>
-      
-      <p className="text-gray-600 text-sm mb-2">{resource.description}</p>
-      <p className="text-sm">
-        <span className="text-gray-500">推荐理由：</span>
-        <span className="text-primary-600">{resource.recommendation_reason}</span>
+
+      <p className="res__desc">{resource.description}</p>
+      <p className="res__reason">
+        <span className="res__key">推荐理由</span>
+        {resource.recommendation_reason}
       </p>
-      <p className="text-xs text-gray-400 mt-2">适用阶段：{resource.phase}</p>
+
+      <dl className="res__facts">
+        <div className="res__fact">
+          <dt>类型</dt>
+          <dd>{resource.type}</dd>
+        </div>
+        {resource.source && (
+          <div className="res__fact">
+            <dt>来源</dt>
+            <dd>{sourceLabels[resource.source] || resource.source}</dd>
+          </div>
+        )}
+        <div className="res__fact">
+          <dt>难度</dt>
+          <dd>{resource.difficulty}</dd>
+        </div>
+        <div className="res__fact">
+          <dt>时长</dt>
+          <dd>{resource.duration}</dd>
+        </div>
+        <div className="res__fact">
+          <dt>适用阶段</dt>
+          <dd>{resource.phase}</dd>
+        </div>
+        {feedbackCount > 0 && (
+          <div className="res__fact">
+            <dt>评分</dt>
+            <dd>
+              {Number(shown.rating ?? 0).toFixed(1)}，{feedbackCount} 条反馈
+            </dd>
+          </div>
+        )}
+      </dl>
 
       <ResourceFeedback
         resource={shown}
         learningObjective={learningObjective}
         onSubmit={onFeedbackSubmit}
       />
-    </div>
+    </article>
   );
 }

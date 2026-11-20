@@ -1,6 +1,5 @@
 // 单个资源的评价控件：折叠态一个按钮，展开后是 有用/没用 + 五星 + 备注。
 import { useState } from 'react';
-import { ThumbsUp, ThumbsDown, Star, X, Check, Loader2 } from 'lucide-react';
 import type { Resource, FeedbackSubmission } from '../types';
 
 interface ResourceFeedbackProps {
@@ -65,103 +64,95 @@ export function ResourceFeedback({ resource, learningObjective, onSubmit }: Reso
 
   if (submitted) {
     return (
-      <div className="flex flex-wrap items-center gap-2 mt-3 text-sm">
-        <Check className="w-4 h-4 text-green-500" />
-        <span className="text-green-600">
-          已记录为{feedbackType === 'useful' ? '有用' : '不太有用'}
-        </span>
+      <p className="feedback__done">
+        <span>已记下：{feedbackType === 'useful' ? '有用' : '不太有用'}</span>
         {hasStats && (
-          <span className="text-xs text-amber-600">
-            该资源当前 {Number(resource.rating ?? 0).toFixed(1)} 分（{resource.feedback_count} 条反馈）
+          <span className="feedback__done-note">
+            当前 {Number(resource.rating ?? 0).toFixed(1)} 分，{resource.feedback_count} 条反馈
           </span>
         )}
-      </div>
+      </p>
     );
   }
 
   return (
-    <div className="mt-3">
+    <div className="feedback">
       {!showFeedback ? (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowFeedback(true)}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors"
-          >
-            <Star className="w-3.5 h-3.5" />
-            评价此资源
-          </button>
-          {resource.source && (
-            <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600">
-              {resource.source === 'knowledge_base' ? '📚 知识库' : 
-               resource.source === 'web_search' ? '🌐 网络' : '🤖 AI推荐'}
-            </span>
-          )}
-        </div>
+        <button type="button" className="feedback__trigger" onClick={() => setShowFeedback(true)}>
+          评价此资源
+        </button>
       ) : (
-        <div className="bg-gray-50 rounded-lg p-3 mt-2">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-gray-700">这个资源对你有帮助吗？</span>
+        <div className="feedback__panel">
+          <div className="feedback__head">
+            <p className="feedback__question">这个资源对你有帮助吗？</p>
             <button
+              type="button"
+              className="feedback__close"
               onClick={() => setShowFeedback(false)}
-              className="text-gray-400 hover:text-gray-600"
+              aria-label="收起评价"
             >
-              <X className="w-4 h-4" />
+              ×
             </button>
           </div>
 
-          <div className="flex gap-2 mb-3">
+          <div className="stars" role="group" aria-label="评分">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                type="button"
+                className={`stars__btn ${(hoverRating || rating) >= star ? 'is-on' : ''}`}
+                onClick={() => setRating(star)}
+                onMouseEnter={() => setHoverRating(star)}
+                onMouseLeave={() => setHoverRating(0)}
+                disabled={submitting}
+                aria-label={`${star} 分`}
+                aria-pressed={rating === star}
+              >
+                {(hoverRating || rating) >= star ? '★' : '☆'}
+              </button>
+            ))}
+          </div>
+
+          <label className="visually-hidden" htmlFor={`comment-${resource.id || resource.title}`}>
+            补充评价
+          </label>
+          <textarea
+            id={`comment-${resource.id || resource.title}`}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="补充一句（可选）"
+            disabled={submitting}
+            className="feedback__comment"
+          />
+
+          <div className="feedback__actions">
             <button
+              type="button"
+              className="btn btn--sm"
               onClick={() => handleSubmit('useful')}
               disabled={submitting}
-              className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsUp className="w-4 h-4" />}
               有用
             </button>
             <button
+              type="button"
+              className="btn btn--sm"
               onClick={() => handleSubmit('not_useful')}
               disabled={submitting}
-              className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsDown className="w-4 h-4" />}
               不太有用
             </button>
+            {submitting && (
+              <span className="feedback__pending" role="status">
+                提交中…
+              </span>
+            )}
           </div>
-
-          <div className="mb-3">
-            <span className="text-sm text-gray-600 mb-1 block">评分：</span>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  onClick={() => setRating(star)}
-                  onMouseEnter={() => setHoverRating(star)}
-                  onMouseLeave={() => setHoverRating(0)}
-                  disabled={submitting}
-                  className="p-0.5 disabled:cursor-not-allowed"
-                >
-                  <Star
-                    className={`w-5 h-5 ${
-                      (hoverRating || rating) >= star
-                        ? 'fill-yellow-400 text-yellow-400'
-                        : 'text-gray-300'
-                    }`}
-                  />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="补充评价（可选）..."
-            disabled={submitting}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg resize-none h-16 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100"
-          />
 
           {errorMessage && (
-            <p className="mt-2 text-xs text-red-600">提交失败：{errorMessage}</p>
+            <p className="feedback__error" role="alert">
+              提交失败：{errorMessage}
+            </p>
           )}
         </div>
       )}
