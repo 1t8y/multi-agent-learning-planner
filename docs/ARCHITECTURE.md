@@ -6,7 +6,7 @@
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│ 前端（React 18 + TypeScript + Vite + Tailwind）           │
+│ 前端（React 18 + TypeScript + Vite）                      │
 │ 输入需求 → 展示需求/计划/资源/评估 → 提交反馈/贡献资源      │
 └───────────────────────────┬──────────────────────────────┘
                             │ HTTP（默认 :8001）
@@ -37,7 +37,7 @@
 | RequirementExtractorAgent | `requirement_extractor.py` | 提取五维需求（目标/基础/每日时长/偏好/时间期望） |
 | CoursePlannerAgent | `course_planner.py` | 生成阶段化学习计划 |
 | ResourceRecommenderAgent | `resource_recommender.py` | 调用增强 Self-RAG 推荐资源 |
-| AssessmentFeedbackAgent | `assessment_feedback.py` | 六维评估计划质量并给调整建议 |
+| AssessmentFeedbackAgent | `assessment_feedback.py` | 评估计划质量（整体 + 可行性/内容/时间/方法四维）并给调整建议 |
 
 四个 Agent 的系统提示词都写在代码里（`_get_default_prompt`），仓库不依赖外置提示词文件。
 

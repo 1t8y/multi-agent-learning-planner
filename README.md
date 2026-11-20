@@ -1,21 +1,21 @@
 # 多智能体学习规划助手
 
-![Version](https://img.shields.io/badge/version-2.6.4-blue)
+![Version](https://img.shields.io/badge/version-2.7.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-ff6b35)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi)
 ![Tests](https://img.shields.io/badge/tests-142%20passed-brightgreen)
 
-**一句话需求 → 阶段化学习计划 + 可溯源资源清单 + 六维评估，四个 Agent 用 LangGraph 编排，评估不达标回环重生成（≤3 轮）。**  
+**一句话需求 → 阶段化学习计划 + 可溯源资源清单 + 四维评估，四个 Agent 用 LangGraph 编排，评估不达标回环重生成（≤3 轮）。**  
 检索链路：BGE 稠密 + BM25 稀疏双路召回 → RRF 融合（只看名次，免归一化）→ Cross-Encoder 精排 → 置信度门控。  
 效果由 97 道自建题、十档消融、RAGAS（RAG 评测框架）四指标与 142 项 CI（持续集成）测试背书，失败分析与已知偏差如实入档。
 
 ---
 
-![演示：输入需求 → 需求分析 → 阶段计划 → 资源与检索诊断 → 六维评估 → 反馈写回评分](assets/demo.gif)
+![演示：输入需求 → 需求分析 → 阶段路径 → 资源与检索来源 → 评估（整体 + 四维）→ 反馈写回评分](assets/demo.gif)
 
-*60 秒跑完一轮完整链路（真实后端，无 mock）：输入需求 → 需求分析五字段 → 4 阶段计划 → 资源列表与检索诊断条（来源 / 质量分 / 候选数 / 重排状态）→ 六维评估 → 提交反馈后评分与反馈条数当场回写。*  
+*60 秒跑完一轮完整链路（真实后端，无 mock）：输入需求 → 需求分析五字段 → 4 阶段路径（阶段 / 时长 / 学习内容 / 阶段目标）→ 资源列表与检索来源（知识库 / 匹配度 / 是否联网）→ 评估（整体 8.5，可行性 9 / 内容 9 / 时间 8 / 方法 8）→ 提交反馈后评分与反馈条数当场回写。*  
 *逐帧讲解词与另外两个用例见 [docs/demo-script.md](docs/demo-script.md)。*
 
 ---
@@ -62,7 +62,7 @@ flowchart TD
     U[用户输入<br/>自然语言学习需求] --> E[需求提取 Agent<br/>五维需求]
     E --> P[课程规划 Agent<br/>阶段化计划]
     P --> R[资源推荐 Agent<br/>增强 Self-RAG]
-    P --> A[评估反馈 Agent<br/>六维评估]
+    P --> A[评估反馈 Agent<br/>整体 + 四维]
     R --> M[结果整合]
     A --> M
     M --> F[前端展示<br/>需求 / 计划 / 资源 / 评估]
@@ -92,7 +92,7 @@ flowchart TD
 | 模型 | DeepSeek Chat（生成与评估）、BGE-small-zh（Embedding）、bge-reranker-base（精排） |
 | 检索 | ChromaDB + BM25 + 标准 RRF + 元数据过滤 + LRU 缓存                          |
 | 后端 | FastAPI + Pydantic + uvicorn（端口可用 `API_PORT` 覆盖）                   |
-| 前端 | React 18 + TypeScript + Vite + Tailwind CSS                        |
+| 前端 | React 18 + TypeScript + Vite（手写 CSS 变量系统）                      |
 | 评测 | 自建检索指标（Hit@k / MRR@k / P@k）+ RAGAS 0.4.3                           |
 | 工程 | pytest（148 项）、GitHub Actions、esbuild 故障注入探针                        |
 
@@ -144,7 +144,7 @@ multi-agent/
 ├── frontend/                        # React + TypeScript + Vite（输入 / 结果 / 反馈 / 贡献资源）
 ├── docs/                            # 架构、运维、检索评测报告、开发记录、演示脚本
 ├── scripts/                         # 演示录制与 GIF 合成
-├── assets/demo.gif                  # 60 秒演示（真实后端录制的 17 帧）
+├── assets/demo.gif                  # 60 秒演示（真实后端录制的 18 帧）
 └── .github/workflows/test.yml       # CI：数据校验 + 快速单测 + 前端构建
 ```
 

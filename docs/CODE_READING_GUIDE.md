@@ -655,7 +655,7 @@ passed = decision == "pass" and quality_score >= self.threshold
 
 ### 7.1 L1 问题与答案要点
 
-- **四个 Agent 的职责**：RequirementExtractor（五维需求：目标/基础/每日时长/偏好/时间期望）、CoursePlanner（阶段化计划）、ResourceRecommender（调 RAG 链路出资源）、AssessmentFeedback（六维评估 + 调整建议）。
+- **四个 Agent 的职责**：RequirementExtractor（五维需求：目标/基础/每日时长/偏好/时间期望）、CoursePlanner（阶段化计划）、ResourceRecommender（调 RAG 链路出资源）、AssessmentFeedback（整体评分 + 四维评估 + 调整建议）。
 - **提示词在哪**：全部写在代码里（各 Agent 的 `_get_default_prompt`），不依赖外部提示词文件；输出格式段落是硬约束，下游按该 JSON 结构解析。
 - **失败兜底**：`_call_api` 失败或 JSON 解析失败时返回 `_get_default_result()`（空结构），不抛异常，保证编排层还能拿到计划和评估。
 - **统一签名**：四个 Agent 对外都有 `process(输入) -> 结果`，编排器不关心内部方法名。
