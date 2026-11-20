@@ -90,8 +90,6 @@ class LearningPlanningCoordinator:
                         "content_rating": 0,
                         "time_rating": 0,
                         "method_rating": 0,
-                        "progression_rating": 0,
-                        "personalization_rating": 0,
                         "score_average": 0
                     },
                     "assessment_metrics": [],

@@ -44,7 +44,7 @@ class AssessmentFeedbackAgent(BaseAgent):
         return """你是专业**学习效果评估师**，对学习计划进行全面多维度评估，制定科学的评估方法，并提供针对性的调整建议。
 
 ## 核心职责
-- 从6个维度全面评估学习计划的合理性、可行性和有效性
+- 从4个维度全面评估学习计划的合理性、可行性和有效性
 - 制定阶段性评估指标和方法
 - 返回评估方案和具体调整建议
 
@@ -52,13 +52,13 @@ class AssessmentFeedbackAgent(BaseAgent):
 - requirement_info: 学习需求信息（包含学习目标、现有基础、每日可用时间、学习偏好、时间期望）
 - learning_plan: 学习计划（包含目标可行性、预估周期、学习路径、阶段信息）
 
-## 评估维度（6维度）
+## 评估维度（4维度）
 1. **目标可行性评估 (feasibility_rating)**：目标是否明确、是否符合用户基础和时间约束
 2. **内容合理性评估 (content_rating)**：学习内容是否系统完整、是否循序渐进
 3. **时间安排评估 (time_rating)**：各阶段时间分配是否合理、是否符合用户每日可用时间
 4. **方法适配性评估 (method_rating)**：学习方式是否匹配用户偏好（视频/文字/实操）
-5. **进阶逻辑评估 (progression_rating)**：阶段间过渡是否平滑、知识衔接是否合理、是否遵循「基础→进阶→实战」逻辑
-6. **个性化匹配评估 (personalization_rating)**：计划是否针对用户具体目标（而非通用模板）、是否考虑了用户的独特需求
+
+进阶逻辑与个性化匹配不作为独立维度，其判断应并入上述四个维度的评分理由中。
 
 ## 评估指标
 - 过程性指标：学习进度完成率、知识点掌握程度、作业质量、学习活跃度
@@ -85,9 +85,7 @@ class AssessmentFeedbackAgent(BaseAgent):
     "feasibility_rating": 0,
     "content_rating": 0,
     "time_rating": 0,
-    "method_rating": 0,
-    "progression_rating": 0,
-    "personalization_rating": 0
+    "method_rating": 0
   },
   "assessment_metrics": [
     {
@@ -122,8 +120,6 @@ class AssessmentFeedbackAgent(BaseAgent):
                 "content_rating": 0,
                 "time_rating": 0,
                 "method_rating": 0,
-                "progression_rating": 0,
-                "personalization_rating": 0,
                 "score_average": 0,
             },
             "assessment_metrics": [],
@@ -229,11 +225,10 @@ class AssessmentFeedbackAgent(BaseAgent):
             if key not in result:
                 return False
         
-        # 验证评估摘要（6维度）
+        # 验证评估摘要（4维度 + 均分）
         summary = result['assessment_summary']
         summary_fields = ['overall_rating', 'feasibility_rating',
-                         'content_rating', 'time_rating', 'method_rating',
-                         'progression_rating', 'personalization_rating']
+                         'content_rating', 'time_rating', 'method_rating']
         
         for field in summary_fields:
             if field not in summary:

@@ -52,7 +52,7 @@ if FASTAPI_AVAILABLE:
         await asyncio.to_thread(_bootstrap)
         yield
 
-    app = FastAPI(title="学习规划助手API", version="2.7.0", lifespan=lifespan)
+    app = FastAPI(title="学习规划助手API", version="2.7.1", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,

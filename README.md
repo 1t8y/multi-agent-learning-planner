@@ -1,6 +1,6 @@
 # 多智能体学习规划助手
 
-![Version](https://img.shields.io/badge/version-2.7.0-blue)
+![Version](https://img.shields.io/badge/version-2.7.1-blue)
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-ff6b35)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)

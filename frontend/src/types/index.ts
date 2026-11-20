@@ -124,7 +124,7 @@ export interface AdjustmentSuggestion {
   priority: string;
 }
 
-/** 评估总分与五个维度评分 */
+/** 评估总分与四个维度评分 */
 export interface AssessmentSummary {
   overall_rating: string;
   feasibility_rating: number;
