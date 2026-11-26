@@ -805,7 +805,7 @@ return sum(1 for doc_id in top if str(doc_id) in acceptable) / k
 - [ ] **where 过滤**：`_build_where` + Dense 传参 / Sparse 手动比对（`439-451, 550-562`）
 - [ ] **缓存失效**：`cache_key` 带 `data_version`（`retrieval.py:220`）
 - [ ] **重排门控**：sigmoid 置信度 + 首位低于阈值保留融合顺序（`reranker.py:51-82`）
-- [ ] **质量分**：`0.55×top + 0.25×avg + 0.20×match`（`rag_quality.py:40`）
+- [ ] **质量分**：`0.65×top + 0.25×avg + 0.10×match` + 三态 decision（`rag_quality.py:118-137`）
 - [ ] **评分回写**：累计平均公式 + 只 bump 版本（`vector_store_core.py:608-620`）
 
 ---

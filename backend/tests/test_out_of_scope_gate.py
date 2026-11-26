@@ -22,9 +22,17 @@ def test_rrf_skips_fusion_when_dense_has_no_absolute_hit():
     """语义侧全灭时应跳过融合返回空，并记录可诊断的原因"""
     retriever = make_retriever(RESOURCES)
     results = retriever.search("法学期末知识产权法条", top_k=5, mode="hybrid",
-                               min_dense_similarity=0.25)
+                               min_dense_similarity=0.15)
     assert results == []
     assert "dense" in retriever.last_no_hit_reason
+
+
+def test_coarse_threshold_below_hard_line():
+    """粗筛必须严格低于门控硬线，否则硬线在生产链路上拿不到候选"""
+    from src.config import config
+
+    rag = config.get_defaults()["rag"]
+    assert rag["rrf_min_dense_similarity"] < rag["hard_cosine"]
 
 
 def test_rrf_threshold_filters_low_candidates():
@@ -54,8 +62,8 @@ def _item(cosine: float, logit: float) -> dict:
 
 
 def test_both_signals_below_hard_line_decides_web():
-    """两路绝对信号同时低于硬线 → 判知识库无覆盖，直接联网"""
-    report = RAGQualityChecker().evaluate([_item(0.12, 0.09)])
+    """cosine 落在 [粗筛 0.15, 硬线 0.25) 的候选仍能被门控判 web"""
+    report = RAGQualityChecker().evaluate([_item(0.20, 0.09)])
     assert report["decision"] == "web"
     assert report["passed"] is False
     assert report["grade"] == "low"

@@ -22,8 +22,10 @@ class AdvancedSelfRAGRecommender(SelfRAGRecommender):
         self.CANDIDATE_K = int(rag.get("candidate_k", 10))
         self.TOP_K = int(rag.get("top_k", 5))
         self.MIN_TYPES = int(rag.get("min_types", 0))
-        # RRF 融合前的绝对门槛：语义完全没命中时不让 BM25 通用词凑出候选
-        self.MIN_DENSE_SIMILARITY = float(rag.get("rrf_min_dense_similarity", 0.25))
+        # RRF 粗筛（0.15）必须严格低于门控硬线 hard_cosine（0.25）：
+        # 粗筛全灭直接联网；落在 [0.15, 0.25) 的候选交给门控硬线判 web。
+        # 两者同值时硬线永远拿不到候选，只剩空候选这一条 web 路径。
+        self.MIN_DENSE_SIMILARITY = float(rag.get("rrf_min_dense_similarity", 0.15))
         self.MIN_BM25_SCORE = float(rag.get("rrf_min_bm25_score", 1.0))
         self.reranker = ResourceReranker(
             model_name=rag.get("rerank_model", "BAAI/bge-reranker-base"),

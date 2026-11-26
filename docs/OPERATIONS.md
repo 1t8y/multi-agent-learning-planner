@@ -70,8 +70,9 @@ RAG_QUALITY_THRESHOLD=0.55
 RAG_RERANK_MIN_CONFIDENCE=0
 
 # 库外查询识别：两级门槛（标定依据见 docs/ARCHITECTURE.md）
-RAG_RRF_MIN_DENSE_SIMILARITY=0.25   # RRF 融合前 dense 真实余弦下限
-RAG_RRF_MIN_BM25_SCORE=1.0          # RRF 融合前 BM25 绝对下限
+# 粗筛必须严格低于硬线，否则门控硬线拿不到候选（2026-11-25 修正）
+RAG_RRF_MIN_DENSE_SIMILARITY=0.15   # RRF 粗筛：dense 真实余弦下限
+RAG_RRF_MIN_BM25_SCORE=1.0          # RRF 粗筛：BM25 绝对下限
 RAG_HARD_COSINE=0.25                # 硬线：cosine 与 logit 同时低于 → 直接联网
 RAG_HARD_LOGIT=0.5
 RAG_SOFT_COSINE=0.28                # 软线：任一路低于 → 改写查询重试
@@ -85,17 +86,21 @@ RAG_MIN_TYPES=0
 
 `WEB_SEARCH_ENABLED=true` + 配置了 `TAVILY_API_KEY` 时，只有以下两种情况会发起联网搜索：
 
-- **决策 `web`**：RRF 融合前 dense 侧全部低于 `RAG_RRF_MIN_DENSE_SIMILARITY`，或门控判定
-  两路绝对信号同时低于硬线 → 判「知识库无覆盖」，**跳过查询改写**、清空不相关的本地候选，
-  直接联网。
+- **决策 `web`** 有两条入口，都**跳过查询改写**并清空本地候选后直接联网：
+  1. RRF 粗筛：dense 侧全部低于 `RAG_RRF_MIN_DENSE_SIMILARITY`（0.15）→ 跳过融合、无候选；
+  2. 门控硬线：候选已进入重排，`top cosine < RAG_HARD_COSINE`（0.25）且
+     `top logit < RAG_HARD_LOGIT`（0.5）→ 判知识库无覆盖。
+  粗筛线必须严格低于硬线，否则第 2 条入口在生产链路上拿不到候选。
 - **决策 `rewrite` 且改写次数用尽**：单路信号偏弱或总分未达标 → 先改写查询
   （最多 `RAG_MAX_REWRITE_TIMES` 次），仍不达标才联网，此时保留本地候选作为补充。
 
 判定依据与阈值标定见 [ARCHITECTURE.md](./ARCHITECTURE.md) 的「库外查询识别与两级门控」。
 结果带 `source: web_search` 标记，与本地资源区分。
 
-- 库内查询若被误判为无覆盖，优先**调低** `RAG_RRF_MIN_DENSE_SIMILARITY` / `RAG_HARD_COSINE`；
-  库外查询若仍混出本地资源，检查 `rag_info.decision` 与 `rag_info.quality.signals` 里的
+- 库内查询若在粗筛阶段被误杀（日志带 `跳过融合=...`），调低
+  `RAG_RRF_MIN_DENSE_SIMILARITY`；若通过了粗筛却在门控被判 web（`决策=web` 且候选非空），
+  调低 `RAG_HARD_COSINE` / `RAG_HARD_LOGIT`。两者必须保持 `粗筛 < 硬线`。
+- 库外查询若仍混出本地资源，检查 `rag_info.decision` 与 `rag_info.quality.signals` 里的
   `top_dense_similarity` / `top_rerank_logit`，再调**高**软线。改完务必跑
   `python -m eval.test_rag_pipeline`（库内 10 题 + 库外 3 题）。
 

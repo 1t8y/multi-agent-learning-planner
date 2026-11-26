@@ -120,15 +120,19 @@ score = 0.65 × top_relevance + 0.25 × avg_relevance + 0.10 × metadata_match_r
 
 | decision | 触发条件 | 处置 |
 |---|---|---|
-| `web` | 两路实测且 `top cosine < hard_cosine` 且 `top logit < hard_logit`；或 RRF 跳过融合后无候选 | 判定知识库无覆盖，**跳过改写**、清空不相关 KB 结果，直接联网；联网仍失败走 LLM |
+| `web` | ① RRF 粗筛后 dense 全灭（无候选）；或 ② 候选中 `top cosine < hard_cosine` 且 `top logit < hard_logit` | 判定知识库无覆盖，**跳过改写**、清空不相关 KB 结果，直接联网；联网仍失败走 LLM |
 | `rewrite` | 只有一路低于软线，或总分未过 `RAG_QUALITY_THRESHOLD` | 查询改写重试（最多 `RAG_MAX_REWRITE_TIMES` 次），仍不达标再联网 |
 | `pass` | 两路都过软线且总分达标 | 正常推荐 |
 
+**两道门槛必须拉开档位**：RRF 粗筛 `RAG_RRF_MIN_DENSE_SIMILARITY=0.15` 必须严格低于
+门控硬线 `RAG_HARD_COSINE=0.25`。粗筛先挡掉明显没命中的；cosine 落在 `[0.15, 0.25)`
+的候选能进入重排，再由门控硬线判 `web`。2026-11-25 之前两者同为 0.25，硬线的 cosine
+条件在生产链路上恒为 False，只剩空候选这一条 web 入口，已修正。
+
 区分依据是：**两路同时极低说明主题根本不在库里，改写只是换词；单路偏弱更可能是查询
-表达不好，值得改写**。RRF 侧另有一道前置门槛：`HybridRetriever.search()` 在融合前按
-`min_dense_similarity` / `min_bm25_score` 过滤候选，dense 全灭时跳过融合直接返回空
-（BM25 靠「学习 / 基础 / 概念」等通用词凑出的命中不算有效命中）。该门槛默认关闭，
-只由增强版 Self-RAG 显式传入，评测链路保持历史行为、Hit@1 不受影响。
+表达不好，值得改写**。`HybridRetriever.search()` 在融合前按 `min_dense_similarity` /
+`min_bm25_score` 过滤候选（BM25 靠「学习 / 基础 / 概念」等通用词凑出的命中不算有效命中）。
+该门槛默认关闭，只由增强版 Self-RAG 显式传入，评测链路保持历史行为、Hit@1 不受影响。
 
 `rerank_confidence` 不再回写 `similarity`：`MIN_KB_SIMILARITY` 过滤与前端展示都用真实分数。
 回归保护见 `tests/test_out_of_scope_gate.py` 与 `eval/test_rag_pipeline.py` 的库外场景。

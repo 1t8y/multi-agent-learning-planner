@@ -115,6 +115,12 @@ top-k 最近邻，RRF 只按名次融合，重排只在候选内排序，`sigmoi
 - **验证**：`eval.test_rag_pipeline` 13 题（库内 10 + 库外 3）全过，库内 top id 不变、
   库外 3/3 `decision=web` 且不产生 KB 资源；新增 `tests/test_out_of_scope_gate.py`
   （不加载模型、不联网）。
+- **2026-11-25 修正：把两道门槛拉开档位**。原先 RRF 粗筛与门控硬线都用 0.25，
+  导致 `hard_cos_bad` 在生产链路上恒为 False、`decision=web` 的双低分支不可达
+  （实测 `cos=0.24→web` 但这类候选已被粗筛剔除，`cos=0.25→rewrite`）。
+  粗筛降到 0.15、硬线保留 0.25，让 `[0.15, 0.25)` 区间的候选交门控精判；
+  `config.py` 默认值、`.env.example`、`advanced_self_rag.py` 兜底值与文档同步，并补了
+  档位可达性测试。
 
 同一天还做了两项与门控配套的加固，否则多线程下新链路会崩：
 

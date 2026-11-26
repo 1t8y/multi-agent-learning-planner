@@ -86,8 +86,10 @@ class ConfigManager:
                 'quality_threshold': float(os.getenv('RAG_QUALITY_THRESHOLD', '0.55')),
                 # ── 库外查询识别（2026-11-12 标定：库内 cosine 0.2944~0.5944 /
                 #    logit 0.800~0.992；库外 cosine -0.0631~0.2184 / logit 0.004~0.281）──
-                # RRF 融合前的绝对门槛：dense 侧低于此值不参与融合；全灭则跳过融合返回空
-                'rrf_min_dense_similarity': float(os.getenv('RAG_RRF_MIN_DENSE_SIMILARITY', '0.25')),
+                # RRF 粗筛：dense 侧低于此值不参与融合；全灭则跳过融合返回空。
+                # 必须严格低于 hard_cosine，否则门控硬线在生产链路上拿不到可判的候选
+                # （2026-11-25 修正：原先两者同为 0.25，硬线 cosine 条件恒为 False）
+                'rrf_min_dense_similarity': float(os.getenv('RAG_RRF_MIN_DENSE_SIMILARITY', '0.15')),
                 'rrf_min_bm25_score': float(os.getenv('RAG_RRF_MIN_BM25_SCORE', '1.0')),
                 # 硬线：cosine 与 logit 同时低于 → 知识库无覆盖，跳过重写直接联网
                 'hard_cosine': float(os.getenv('RAG_HARD_COSINE', '0.25')),
